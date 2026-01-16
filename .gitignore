@@ -1,0 +1,21 @@
+__pycache__/
+*.py[cod]
+
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+.idea/
+.vscode/
+
+.venv/
+*.egg-info/
+build/
+dist/
+
+out/
+models/
+
+# Reference repo folder (kept local only)
+ChirpChirp-main/
+

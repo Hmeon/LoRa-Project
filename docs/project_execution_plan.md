@@ -52,7 +52,7 @@
 - `encode_cycles`/`decode_cycles`를 켜면(논문식 재귀 보정) `delta < 0.5`를 유지하고, `int8/int16`을 쓸 때는 `--auto-scale`로 scale 포화를 피한다.
 
 ## 8) 페이로드 규칙 고정
-- RAW는 int16 규칙을 유지한다.
+- RAW baseline은 `sensor12_packed` 바이너리 규칙(30B/step; `W`면 `30*W` bytes)을 유지한다.
 - BAM은 `int8/int16/float16/float32` 중 선택하고 `scale`을 기록한다.
 - `max_payload_bytes`를 초과하지 않는다.
 

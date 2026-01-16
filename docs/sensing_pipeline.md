@@ -89,7 +89,14 @@ python -m loralink_mllc.cli tx \
 ```
 
 ## Dataset output
-`--dataset-out` writes the raw window (`x_true`) per window:
+`--dataset-out` writes the raw window (`window`, aka `x_true`) per window.
+
+Timestamp rule:
+- `ts_ms` is taken from the sensor feed when available (for `jsonl`/`csv` samplers).
+- For windows with `W > 1`, `ts_ms` is the timestamp of the **last sample** in the window.
+- If no sensor timestamp is available (e.g., `dummy` sampler), `ts_ms` falls back to the runtime clock.
+
+Example:
 ```
 {
   "ts_ms": 1700000000000,

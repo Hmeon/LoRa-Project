@@ -33,7 +33,7 @@ python -m loralink_mllc.cli phase1 --c50 out/c50.json --raw configs/examples/raw
 
 ## 현재 상태 요약
 - 동작 OK: mock 링크, 패킷화, JSONL 로그, C50 탐색, RAW/LATENT A/B 비교.
-- 미구현: UART E22 모듈 설정/AT 구성(런타임 내), LoRaWAN/지연·손실 예측·최적화 로직, 전력 측정 자동화(측정은 외부, Phase 4 보조 스크립트만 제공).
+- 미구현: UART E22 모듈 설정/AT 구성(런타임 내), 지연·손실 예측·최적화 로직, 전력 측정 자동화(측정은 외부, Phase 4 보조 스크립트만 제공).
 
 ## 재개 체크리스트
 1) 실험 목적 확정: C50 조건(ADR-CODE/PHY, payload 길이) 정의
@@ -57,8 +57,8 @@ python -m loralink_mllc.cli phase1 --c50 out/c50.json --raw configs/examples/raw
 ## 자주 보는 CLI
 ```bash
 python -m loralink_mllc.cli --help
-python -m loralink_mllc.cli tx --runspec configs/examples/tx.json --manifest configs/examples/artifacts.json --radio mock
-python -m loralink_mllc.cli rx --runspec configs/examples/rx.json --manifest configs/examples/artifacts.json --radio mock
+python -m loralink_mllc.cli tx --runspec configs/examples/tx_raw.yaml --manifest configs/examples/artifacts_sensor12_packed.json --radio mock
+python -m loralink_mllc.cli rx --runspec configs/examples/rx_raw.yaml --manifest configs/examples/artifacts_sensor12_packed.json --radio mock
 ```
 
 > 팁: 실제 UART 실행 전에는 mock에서 로그 포맷과 재전송 동작을 먼저 확인하세요.

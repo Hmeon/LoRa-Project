@@ -1,23 +1,22 @@
 # LoRaLink-MLLC
 
-LPWA 환경의 LoRa/LoRaWAN 통신에서 시계열 데이터를 수집하고, ML 기반 예측·최적화로 통신 품질·신뢰성 개선을 검증하는 MVP를 목표로 하는 실험 런타임이다.
+LPWA 환경의 LoRa(P2P UART) 통신에서 시계열 센서 윈도우를 **ML 기반 손실 압축(BAM/FEBAM 계열)** 으로 인코딩해 **페이로드를 줄이고**, 그 영향(PDR/ETX/ToA/에너지, 재구성 오차)을 검증하는 실험 런타임이다.
 
 Quick Links: [빠른 시작](#빠른-시작-mock) · [START_HERE.md](START_HERE.md) · [docs/01_design_doc_experiment_plan.md](docs/01_design_doc_experiment_plan.md) · [docs/sensing_pipeline.md](docs/sensing_pipeline.md) · [docs/runbook_uart_sensing.md](docs/runbook_uart_sensing.md) · [docs/phase2_bam_training.md](docs/phase2_bam_training.md) · [docs/phase3_on_air_validation.md](docs/phase3_on_air_validation.md) · [docs/phase4_energy_evaluation.md](docs/phase4_energy_evaluation.md)
 
 ## 개요
-- Goal: LPWA/LoRa/LoRaWAN 통신을 이해하고, 현장 시계열 데이터를 기반으로 지연율·패킷 손실률·신호 세기 등의 성능 지표를 측정하며, ML 기반 예측·최적화로 손실 복원과 네트워크 안정성 향상을 검증한 MVP를 제시한다.
-- Problem: AUX 없는 E22 UART 환경에서 ToA를 추정해야 하며, payload 크기 변화가 PDR/ETX와 재구성 오차에 미치는 영향을 비교해야 한다.
-- Solution: `LEN|SEQ|PAYLOAD` 프레임과 RunSpec 기반 설정, JSONL 로깅, payload 기반 코덱 실험으로 Phase 0/1 mock 실험과 metrics 계산을 수행한다.
-- Scope: Python 런타임, LoRa P2P UART(mock 포함), JSONL/CSV 센서 입력, BAM inference artifacts 로딩을 포함한다.
-- Non-goals: 모듈 설정/AT 제어는 제공하지 않는다; Waveshare SX1262 LoRa HAT은 AT UART만 접근 가능하며 Air Speed 프리셋만 설정한다; BAM 학습은 baseline 스크립트를 제공하지만 고급 튜닝/모델 선택 자동화는 범위 밖이다; 전력 측정 자동화와 실 센서 드라이버는 포함하지 않는다; mock 링크는 단일 프로세스 내 연결만 가정한다.
+- Goal: payload 크기 변화(코덱/latent_dim/packing)가 링크 지표(PDR/ETX/ToA/에너지)와 정보 보존(재구성 MAE/MSE)에 미치는 영향을 실측/재현 가능한 형태로 검증한다.
+- Problem: AUX 없는 E22 UART 환경에서 ToA를 추정해야 하며, 바이너리 payload(238B 제한) 내에서 window/latent를 설계해야 한다.
+- Solution: `LEN|SEQ|PAYLOAD` 프레임 + RunSpec 기반 설정 + JSONL 로깅 + codec 실험(Phase 0/1/2/3/4 보조 스크립트)으로 비교 가능한 데이터를 만든다.
+- Scope: Python 런타임, LoRa P2P UART(mock 포함), JSONL/CSV 센서 입력, RAW 바이너리 baseline(`sensor12_packed`), BAM inference artifacts 로딩을 포함한다.
+- Non-goals: 런타임에서 E22 설정(AT 구성)은 자동화하지 않는다(외부 설정 + `scripts/e22_tool.py` 보조); 전력 측정은 외부 장비에 의존(Phase 4는 리포트 결합 도구만); 실 센서 드라이버/보드 제어는 포함하지 않는다.
 
 ## TODO (미구현)
-- LoRaWAN 지원 범위 정의 및 구현(클래스/지역/주파수 등).
-- 지연율 지표 정의 및 측정 경로 정리(ACK RTT vs E2E).
-- RSSI/SNR 수집 경로 구현(AT 응답 파싱 포함).
-- ML 기반 지연·손실 예측/최적화 및 손실 복원 로직 구현.
-- Air Speed 프리셋 ↔ air data rate 매핑은 문서화했으나, SF/BW/CR 매핑의 벤더 확인은 TODO.
-- 배포 패키징/릴리스 파이프라인 정의 및 구현.
+- E22 AT UART P2P 링크만 대상으로 한다(추가 MAC/네트워크 계층 구현 없음).
+- cross-device E2E 지연(송신 센서 시각 → 수신 복원 시각) 측정은 클럭 동기화/정의가 필요하다.
+- SNR 수집 경로(가능한 경우) 정리/구현.
+- Air Speed 프리셋 ↔ (SF/BW/CR) 매핑의 벤더 확인.
+- 릴리스 패키징(라이선스/보안/기여 문서 포함) 정리.
 
 ## 주요 기능
 - 제공: RunSpec YAML/JSON 로딩·검증 및 `max_payload_bytes` 제약 적용.
@@ -65,14 +64,14 @@ python -m pip install -e .[uart]
 
 python -m loralink_mllc.cli rx \
   --runspec configs/examples/rx_raw.yaml \
-  --manifest configs/examples/artifacts.json \
+  --manifest configs/examples/artifacts_sensor12_packed.json \
   --radio uart \
   --uart-port COM4 \
   --uart-baud 9600
 
 python -m loralink_mllc.cli tx \
   --runspec configs/examples/tx_raw.yaml \
-  --manifest configs/examples/artifacts.json \
+  --manifest configs/examples/artifacts_sensor12_packed.json \
   --radio uart \
   --uart-port COM3 \
   --uart-baud 9600
@@ -84,7 +83,7 @@ JSONL 스키마는 `docs/sensing_pipeline.md`에 정의돼 있다.
 ```bash
 python -m loralink_mllc.cli tx \
   --runspec configs/examples/tx_raw.yaml \
-  --manifest configs/examples/artifacts.json \
+  --manifest configs/examples/artifacts_sensor12_packed.json \
   --sampler jsonl \
   --sensor-path configs/examples/sensor_sample.jsonl \
   --dataset-out out/dataset_raw.jsonl \
@@ -100,20 +99,22 @@ RunSpec 스키마는 `loralink_mllc/config/runspec.py`에 정의돼 있다. 환�
 | run_id | 없음 | 필수 | 런 식별자 | example_raw |
 | role | 없음 | 필수 | tx 또는 rx | tx |
 | mode | 없음 | 필수 | RAW 또는 LATENT | RAW |
-| codec.id | 없음 | 필수 | 코덱 선택 | raw |
+| codec.id | 없음 | 필수 | 코덱 선택 | sensor12_packed |
 | window.dims | 12 | 선택 | 센서 차원 수 | 12 |
 | window.W | 없음 | 필수 | 윈도우 길이 | 1 |
 | window.stride | 1 | 선택 | 윈도우 stride | 1 |
 | tx.ack_timeout_ms | 없음 | 필수 | ACK 타임아웃 | 10 |
 | tx.max_retries | 없음 | 필수 | 최대 재시도 | 0 |
 | max_payload_bytes | 238 | 선택 | payload 상한 | 238 |
-| artifacts_manifest | 없음 | 선택 | artifacts manifest 경로 | configs/examples/artifacts.json |
+| artifacts_manifest | 없음 | 선택 | artifacts manifest 경로 | configs/examples/artifacts_sensor12_packed.json |
 
 설정 파일 위치:
 - `configs/examples/tx_raw.yaml`, `configs/examples/rx_raw.yaml`
 - `configs/examples/tx_latent.yaml`, `configs/examples/rx_latent.yaml`
 - `configs/examples/tx_bam.yaml`, `configs/examples/rx_bam.yaml`
-- `configs/examples/artifacts.json`, `configs/examples/artifacts_zlib.json`, `configs/examples/artifacts_bam.json`
+- `configs/examples/artifacts_sensor12_packed.json` (RAW baseline)
+- `configs/examples/artifacts.json` (legacy raw:int16 baseline)
+- `configs/examples/artifacts_zlib.json`, `configs/examples/artifacts_bam.json`
 - `configs/examples/bam_manifest.json`
 - `configs/examples/phy_profiles.yaml`
 
@@ -184,9 +185,9 @@ python scripts/plot_phase_results.py --phase3 out/phase3/report_all.json --out-d
 - `docs/review_checklist.md`: 목표 정합성/전면 검토 체크리스트
 </details>
 
-- Contributing: TODO(확인 필요, 파일 없음)
-- Security: TODO(확인 필요, 파일 없음)
-- License: TODO(확인 필요, `LICENSE_TODO.md` 참고)
+- Contributing: `CONTRIBUTING.md`
+- Security: `SECURITY.md`
+- License: `LICENSE_TODO.md` (미결정)
 
 ## 용어 표준화
 | 영문 용어 | 한국어 표기/설명 |
@@ -200,4 +201,3 @@ python scripts/plot_phase_results.py --phase3 out/phase3/report_all.json --out-d
 | RAW/LATENT | RAW/LATENT 모드 |
 | BAM | BAM(코덱/모델 이름) |
 | LPWA | LPWA(Low Power Wide Area) |
-| LoRaWAN | LoRaWAN(표준 MAC/네트워크 계층) |

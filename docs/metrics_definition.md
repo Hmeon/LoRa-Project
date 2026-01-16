@@ -19,7 +19,10 @@ Notes:
 ## Latency and signal metrics (TBD)
 - **Latency**
   - `rtt_ms` is logged on `ack_received` and can be used as a proxy for ACK round-trip time.
-  - End-to-end latency requires synchronized clocks and a defined start/end event (TODO).
+  - `queue_ms` and `e2e_ms` may be logged on `ack_received`:
+    - `queue_ms`: window-ready -> first TX send delay (local, monotonic)
+    - `e2e_ms`: window-ready -> ACK received (local, monotonic; includes retransmissions)
+  - Cross-device end-to-end latency (TX->RX application) still requires synchronized clocks and a defined start/end event (TODO).
 - **RSSI/SNR**
   - If the module is configured to append an RSSI byte after each received UART frame (REG3 bit 7),
     run TX/RX with `--uart-rssi-byte`. The runtime logs `rssi_dbm` (computed as `rssi_byte - 256`)
@@ -44,4 +47,8 @@ Choose at least one and record the measurement method:
 ## Tooling note
 `python -m loralink_mllc.cli metrics` outputs summary stats when fields are present:
 - `ack_rtt_ms` from `ack_received.rtt_ms`
+- `queue_ms` from `ack_received.queue_ms`
+- `e2e_ms` from `ack_received.e2e_ms`
 - `rssi_dbm` from `rx_ok.rssi_dbm` and/or `ack_received.rssi_dbm`
+- `codec_encode_ms` from `tx_sent.codec_encode_ms` (host CPU cost proxy)
+- `tx_age_ms` from `tx_sent.age_ms` and `frame_bytes` from `tx_sent.frame_bytes`

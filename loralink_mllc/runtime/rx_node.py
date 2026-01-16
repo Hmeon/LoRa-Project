@@ -55,7 +55,11 @@ class RxNode:
         except PacketError as exc:
             self._logger.log_event("rx_parse_fail", {"reason": str(exc)})
             return
-        rx_payload: dict[str, object] = {"seq": packet.seq, "payload_bytes": len(packet.payload)}
+        rx_payload: dict[str, object] = {
+            "seq": packet.seq,
+            "payload_bytes": len(packet.payload),
+            "frame_bytes": len(frame),
+        }
         if isinstance(self._radio, IRxRssi):
             rssi_dbm = self._radio.last_rx_rssi_dbm()
             if rssi_dbm is not None:

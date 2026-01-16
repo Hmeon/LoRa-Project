@@ -28,6 +28,7 @@ models/<model_id>/
   norm.json
   bam_manifest.json
   artifacts.json
+  train_report.json
 ```
 
 ## Artifact contract (must follow)
@@ -72,6 +73,8 @@ Notes:
 - `--train-ratio` uses a deterministic `window_id` hash split; holdout is `(1-ratio)`.
 - The trainer writes `layer_*.npz`, `norm.json`, `bam_manifest.json`, and an `artifacts.json`
   manifest (for `--manifest` in the runtime).
+- The trainer also writes `train_report.json` (payload size + rough runtime cost estimates),
+  which is surfaced in the sweep report.
 - `--scale` is only used for `int8`/`int16` packing. Defaults are chosen to match the dtype
   range when latent values are expected to stay within `[-1, 1]` (`127` for int8, `32767` for int16).
 - Optional: enable per-layer recurrent refinement at inference time by setting `--encode-cycles`
@@ -118,6 +121,13 @@ python scripts/phase2_sweep_bam.py \
 
 The sweep writes a single report JSON (including a Pareto frontier) under:
 - `out/phase2/sweep/sweep_report.json`
+
+## Embedded/runtime complexity note (important)
+- The E22/SX1262 radio does **not** run ML. BAM encode/decode runs on the host (e.g., Raspberry Pi).
+- Keep the deployed model small: prefer low `latent_dim`, small `hidden_dims`, `packing=int8`, and
+  avoid `encode_cycles/decode_cycles` unless the accuracy gain is worth the extra compute.
+- Use `train_report.json.cost` (`param_count`, `weight_bytes`, `ops_encode_est`, `ops_decode_est`) to
+  select a model that fits your CPU/latency budget for the target send interval.
 
 ## RunSpec wiring (TX/RX)
 Example RunSpec snippet:

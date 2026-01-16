@@ -97,6 +97,9 @@ def compute_metrics(events: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
 
     toa_ms_values: List[float] = []
     payload_bytes_values: List[float] = []
+    frame_bytes_values: List[float] = []
+    age_ms_values: List[float] = []
+    codec_encode_ms_values: List[float] = []
     retries = 0
     for event in tx_sent:
         toa = _to_float(event.get("toa_ms_est"))
@@ -105,6 +108,15 @@ def compute_metrics(events: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
         payload_bytes = _to_float(event.get("payload_bytes"))
         if payload_bytes is not None:
             payload_bytes_values.append(payload_bytes)
+        frame_bytes = _to_float(event.get("frame_bytes"))
+        if frame_bytes is not None:
+            frame_bytes_values.append(frame_bytes)
+        age_ms = _to_float(event.get("age_ms"))
+        if age_ms is not None:
+            age_ms_values.append(age_ms)
+        encode_ms = _to_float(event.get("codec_encode_ms"))
+        if encode_ms is not None:
+            codec_encode_ms_values.append(encode_ms)
         attempt = _to_int(event.get("attempt")) or 1
         if attempt > 1:
             retries += 1
@@ -116,6 +128,16 @@ def compute_metrics(events: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
         rtt = _to_float(event.get("rtt_ms"))
         if rtt is not None:
             rtt_ms_values.append(rtt)
+
+    queue_ms_values: List[float] = []
+    e2e_ms_values: List[float] = []
+    for event in ack_recv:
+        queue_ms = _to_float(event.get("queue_ms"))
+        if queue_ms is not None:
+            queue_ms_values.append(queue_ms)
+        e2e_ms = _to_float(event.get("e2e_ms"))
+        if e2e_ms is not None:
+            e2e_ms_values.append(e2e_ms)
 
     rssi_dbm_values: List[float] = []
     for event in (*rx_ok, *ack_recv):
@@ -154,7 +176,12 @@ def compute_metrics(events: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
         "total_toa_ms": total_toa_ms,
         "toa_ms_est": _summary_stats(toa_ms_values),
         "payload_bytes": _summary_stats(payload_bytes_values),
+        "frame_bytes": _summary_stats(frame_bytes_values),
+        "tx_age_ms": _summary_stats(age_ms_values),
+        "codec_encode_ms": _summary_stats(codec_encode_ms_values),
         "ack_rtt_ms": _summary_stats(rtt_ms_values),
+        "queue_ms": _summary_stats(queue_ms_values),
+        "e2e_ms": _summary_stats(e2e_ms_values),
         "rssi_dbm": _summary_stats(rssi_dbm_values),
         "recon_mae": _summary_stats(recon_mae_values),
         "recon_mse": _summary_stats(recon_mse_values),

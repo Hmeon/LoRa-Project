@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from collections import deque
 from dataclasses import dataclass
 from typing import Deque, Dict, List, Protocol, Sequence
@@ -84,6 +85,9 @@ class Preprocessor:
 class PendingWindow:
     window_id: int
     payload: bytes
+    built_ms: int
+    sensor_ts_ms: int | None
+    codec_encode_ms: float
 
 
 class TxNode:
@@ -116,6 +120,7 @@ class TxNode:
         self._pending: Deque[PendingWindow] = deque()
         self._inflight_payloads: Dict[int, PendingWindow] = {}
         self._builder = WindowBuilder(runspec.window.dims, runspec.window.W, runspec.window.stride)
+        self._sample_ts_ms: Deque[int] = deque(maxlen=runspec.window.W)
         self._pre = Preprocessor()
         self._windows_generated = 0
         self._windows_sent = 0
@@ -144,23 +149,43 @@ class TxNode:
         if max_windows is not None and self._windows_generated >= max_windows:
             return
         try:
-            sample = self._sampler.sample()
+            sample_with_ts = getattr(self._sampler, "sample_with_ts", None)
+            if callable(sample_with_ts):
+                ts_ms, sample = sample_with_ts()
+                ts_ms = int(ts_ms)
+            else:
+                ts_ms = self._clock.now_ms()
+                sample = self._sampler.sample()
         except StopIteration:
             self._no_more_samples = True
             return
+        self._sample_ts_ms.append(ts_ms)
         window = self._builder.feed(sample)
         if window is None:
             return
         window_id = self._windows_generated
+        sensor_ts_ms = self._sample_ts_ms[-1] if self._sample_ts_ms else None
+        built_ms = self._clock.now_ms()
         if self._dataset_logger is not None:
-            self._dataset_logger.log_window(window_id, self._clock.now_ms(), window)
+            dataset_ts_ms = sensor_ts_ms if sensor_ts_ms is not None else built_ms
+            self._dataset_logger.log_window(window_id, dataset_ts_ms, window)
         processed = self._pre.apply(window)
+        t0 = time.perf_counter()
         payload = self._codec.encode(processed)
+        codec_encode_ms = (time.perf_counter() - t0) * 1000.0
         if len(payload) > self._max_payload_bytes:
             raise ValueError(
                 f"payload_bytes {len(payload)} exceeds max_payload_bytes {self._max_payload_bytes}"
             )
-        self._pending.append(PendingWindow(window_id=window_id, payload=payload))
+        self._pending.append(
+            PendingWindow(
+                window_id=window_id,
+                payload=payload,
+                built_ms=built_ms,
+                sensor_ts_ms=sensor_ts_ms,
+                codec_encode_ms=codec_encode_ms,
+            )
+        )
         self._windows_generated += 1
 
     def _handle_incoming(self) -> None:
@@ -179,11 +204,17 @@ class TxNode:
             inflight = self._gate.mark_acked(ack_seq)
             if inflight is None:
                 continue
-            rtt_ms = self._clock.now_ms() - inflight.first_tx_ms
+            now_ms = self._clock.now_ms()
+            rtt_ms = now_ms - inflight.first_tx_ms
             ack_payload: dict[str, object] = {"ack_seq": ack_seq, "rtt_ms": rtt_ms}
             window = self._inflight_payloads.get(ack_seq)
             if window is not None:
                 ack_payload["window_id"] = window.window_id
+                ack_payload["queue_ms"] = inflight.first_tx_ms - window.built_ms
+                ack_payload["e2e_ms"] = now_ms - window.built_ms
+                ack_payload["codec_encode_ms"] = window.codec_encode_ms
+                if window.sensor_ts_ms is not None:
+                    ack_payload["sensor_ts_ms"] = window.sensor_ts_ms
             if isinstance(self._radio, IRxRssi):
                 rssi_dbm = self._radio.last_rx_rssi_dbm()
                 if rssi_dbm is not None:
@@ -202,15 +233,20 @@ class TxNode:
             attempt = self._gate.record_send(seq, toa_ms)
             packet = Packet(payload=inflight_payload.payload, seq=seq)
             self._radio.send(packet.to_bytes(max_payload_bytes=self._max_payload_bytes))
+            now_ms = self._clock.now_ms()
             self._logger.log_event(
                 "tx_sent",
                 {
                     "window_id": inflight_payload.window_id,
                     "seq": seq,
                     "payload_bytes": len(inflight_payload.payload),
+                    "frame_bytes": 2 + len(inflight_payload.payload),
                     "toa_ms_est": toa_ms,
                     "guard_ms": self._runspec.tx.guard_ms,
                     "attempt": attempt,
+                    "age_ms": now_ms - inflight_payload.built_ms,
+                    "codec_encode_ms": inflight_payload.codec_encode_ms,
+                    "sensor_ts_ms": inflight_payload.sensor_ts_ms,
                 },
             )
         for inflight in list(self._gate.expired_failures()):
@@ -239,15 +275,20 @@ class TxNode:
         self._radio.send(packet.to_bytes(max_payload_bytes=self._max_payload_bytes))
         self._inflight_payloads[seq] = window
         self._windows_sent += 1
+        now_ms = self._clock.now_ms()
         self._logger.log_event(
             "tx_sent",
             {
                 "window_id": window.window_id,
                 "seq": seq,
                 "payload_bytes": len(window.payload),
+                "frame_bytes": 2 + len(window.payload),
                 "toa_ms_est": toa_ms,
                 "guard_ms": self._runspec.tx.guard_ms,
                 "attempt": attempt,
+                "age_ms": now_ms - window.built_ms,
+                "codec_encode_ms": window.codec_encode_ms,
+                "sensor_ts_ms": window.sensor_ts_ms,
             },
         )
 

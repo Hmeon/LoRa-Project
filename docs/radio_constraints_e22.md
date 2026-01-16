@@ -5,7 +5,7 @@
 - Application header is 2 bytes (`LEN` + `SEQ`), so the maximum payload is **238 bytes**.
 - Requirement: `(2 + LEN) <= 240` which implies `LEN <= 238`.
 
-This limit applies to E22 P2P UART usage, not LoRaWAN MAC payload limits.
+This limit applies to E22 P2P UART usage.
 
 ## AUX pin and timing
 - The E22 module supports an AUX pin, but the HAT/board may not expose it; verify wiring.

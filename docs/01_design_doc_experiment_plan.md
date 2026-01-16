@@ -4,18 +4,17 @@
 
 This repo is the completion/deployment target for the earlier `ChirpChirp-main/` project.
 
-**Final goal (updated):** Use ML to predict and compensate for delay and packet loss on
-field LPWA LoRa/LoRaWAN networks (E22-900T22S / SX1262), measure latency, packet loss,
-and signal strength, demonstrate PDR improvement and latency reduction, and deliver
-a reproducible MVP prototype. The current phases focus on payload reduction, logging,
-and codec validation; predictive/compensation modeling and LoRaWAN support are not
-implemented in this repo yet.
+**Final goal:** Improve LoRa P2P UART link efficiency in interference/loss environments by
+**reducing payload size while preserving information** using ML lossy compression
+(multi-layer BAM / FEBAM family), and validate the impact on PDR/ETX/ToA/energy and reconstruction
+error with a reproducible field-ready pipeline.
+
+**Future work (not required for Phase 0-4 completion):** ML-based delay/loss prediction and
+adaptive tuning can be added later, but the current repo focuses on payload reduction + validation.
 
 **TODO (implementation gaps):**
-- Define LoRaWAN scope (class/region/frequency) and implement runtime support.
 - Define latency metrics (ACK RTT vs E2E) and measurement workflow.
-- Add RSSI/SNR capture path for AT UART modules.
-- Implement ML-based delay/loss prediction and recovery/optimization logic.
+- RSSI byte capture is implemented via REG3 bit 7; decide whether SNR is available/capturable on your AT firmware.
 - Confirm Air Speed preset to PHY mapping with vendor documentation; current mapping uses ADR-CODE table.
 
 **Key constraints to respect (non-negotiable):**
@@ -294,14 +293,16 @@ All logs are JSONL with one event per line.
 
 ### 10.2 TX events
 - `tx_sent`: `seq`, `payload_bytes`, `toa_ms_est`, `guard_ms`, `attempt`
-- `ack_received`: `ack_seq`, `rtt_ms` (optional: `window_id`)
+  - optional: `frame_bytes`, `age_ms`, `codec_encode_ms`, `sensor_ts_ms`
+- `ack_received`: `ack_seq`, `rtt_ms`
+  - optional: `window_id`, `queue_ms`, `e2e_ms`, `codec_encode_ms`, `sensor_ts_ms`, `rssi_dbm`
 - `tx_failed`: `seq`, `reason`, `attempts`
 Optional: `window_id`, `adr_code`, `uart_write_len`, `tx_power_dbm`, `channel`, `address`.
 Note: the runtime logs `window_id` on TX events when `--dataset-out` is used so post-run
 analysis can join delivered windows to `dataset_raw.jsonl`.
 
 ### 10.3 RX events
-- `rx_ok`: `seq`, `payload_bytes`
+- `rx_ok`: `seq`, `payload_bytes` (optional: `frame_bytes`, `rssi_dbm`)
 - `rx_parse_fail`: `reason`
 - `ack_sent`: `ack_seq`
 Optional (TBD): `window_id`, `adr_code`, `crc_ok`, `rssi_dbm`, `snr`.

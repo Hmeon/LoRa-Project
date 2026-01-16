@@ -10,6 +10,9 @@ codebase. It is not a changelog for ChirpChirp-main.
 - Status: scaffold matured into a runnable mock + UART-minimal runtime with BAM inference.
 
 ## Latest update
+- Added a binary RAW on-air payload baseline: `sensor12_packed` (30 bytes/step; gps float32 + IMU/rpy int16 fixed-point) and updated the RAW RunSpecs/docs to use `configs/examples/artifacts_sensor12_packed.json` (no JSON on-air).
+- Removed MAC/network-layer scope/TODO references; the project targets E22 AT UART P2P only.
+- Added timestamped sensor sampling support (`sample_with_ts`) so `dataset_raw.jsonl` uses sensor `ts_ms` (and uses last-sample time for `W>1`), and extended TX/RX logs + metrics with latency/host-cost fields (`codec_encode_ms`, `age_ms`, `queue_ms`, `e2e_ms`, `frame_bytes`).
 - Added optional BAM inference recurrent refinement (`encode_cycles`, `decode_cycles`) with a delta safety check (`delta < 0.5`) when enabled.
 - Aligned the BAM transmission function with the bounded regime (cubic + clip to `[-1, 1]`) and treated `delta=0` as linear/no-op.
 - Extended the Phase 2 trainer with streaming shuffle, early stopping, auto-scale for int8/int16 packing, and a `train_report.json` summary.
@@ -33,10 +36,10 @@ codebase. It is not a changelog for ChirpChirp-main.
 - Added `scripts/e22_tool.py` to read/modify E22 00H..06H settings (including RSSI byte output) and documented it in the UART runbook and constraints docs.
 - Excluded the reference `ChirpChirp-main/` (and `out/`) from `ruff` and cleaned lint issues so `ruff check .` stays meaningful and green.
 - Recorded the field Air Speed preset range as 0-2 for current hardware runs.
-- Flagged that the project's final goal had been misaligned and that the current architecture may not
-  match the updated goal; a full review is required to identify unnecessary logic/files or incorrect artifacts.
-- Added a full review checklist to align the repo with the updated goal and identify stale components
-  (`docs/review_checklist.md`).
+- Aligned goal statements (README/design doc) around payload reduction via BAM/FEBAM; deferred delay/loss prediction/adaptation to future work.
+- Added `CONTRIBUTING.md` and `SECURITY.md` and linked them from the README.
+- Added and started filling a full review checklist to keep goal alignment explicit (`docs/review_checklist.md`).
+- Updated the project execution plan to reflect the current RAW baseline (`sensor12_packed`) and on-air binary policy (`docs/project_execution_plan.md`).
 - Added a sensor ingestion module (`loralink_mllc/sensing/*`) with JSONL/CSV samplers and
   dataset window logging for BAM training.
 - Extended TX CLI to accept real sensor feeds (`--sampler`, `--sensor-path`, `--dataset-out`).
@@ -284,9 +287,10 @@ This section tracks **what is still missing** to fully match the updated final g
 (Step 1..12); the checklist below focuses on **design/implementation closure**.
 
 ### A) Scope + metrics closure
-- [ ] Decide LoRaWAN scope (class/region/frequency) and implement runtime support, or explicitly mark it out of scope.
-- [ ] Define latency metrics beyond ACK RTT (E2E start/end events + clock sync plan) and implement logging + reporting.
-- [ ] Define and implement a signal capture path for the target firmware/hardware (RSSI/SNR); SNR remains TODO.
+- [x] Add local latency fields (`queue_ms`, `e2e_ms`) and metrics reporting.
+- [ ] Define cross-device E2E latency (clock sync plan + start/end events) and implement logging + reporting.
+- [x] Implement RSSI capture via optional trailing RSSI byte (`--uart-rssi-byte`).
+- [ ] Implement SNR capture (if supported by the target firmware) or document it as unavailable.
 
 ### B) Missing runtime capability (final-goal features)
 - [ ] Implement ML-based delay/loss prediction and compensation/optimization logic (what it controls: retries, pacing, PHY, redundancy, payload sizing).

@@ -33,7 +33,7 @@ If PDR is too low, reduce distance, reduce obstacles, or reduce payload_bytes.
 ```bash
 python -m loralink_mllc.cli rx \
   --runspec configs/examples/rx_raw.yaml \
-  --manifest configs/examples/artifacts.json \
+  --manifest configs/examples/artifacts_sensor12_packed.json \
   --radio uart \
   --uart-port COM4 \
   --uart-baud 9600
@@ -43,7 +43,7 @@ python -m loralink_mllc.cli rx \
 ```bash
 python -m loralink_mllc.cli tx \
   --runspec configs/examples/tx_raw.yaml \
-  --manifest configs/examples/artifacts.json \
+  --manifest configs/examples/artifacts_sensor12_packed.json \
   --sampler dummy \
   --radio uart \
   --uart-port COM3 \

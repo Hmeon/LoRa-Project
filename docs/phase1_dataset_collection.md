@@ -22,7 +22,7 @@ It assumes Phase 0 has produced a C50 record and UART settings are fixed.
 ```bash
 python -m loralink_mllc.cli rx \
   --runspec configs/examples/rx_raw.yaml \
-  --manifest configs/examples/artifacts.json \
+  --manifest configs/examples/artifacts_sensor12_packed.json \
   --radio uart \
   --uart-port COM4 \
   --uart-baud 9600
@@ -32,7 +32,7 @@ python -m loralink_mllc.cli rx \
 ```bash
 python -m loralink_mllc.cli tx \
   --runspec configs/examples/tx_raw.yaml \
-  --manifest configs/examples/artifacts.json \
+  --manifest configs/examples/artifacts_sensor12_packed.json \
   --sampler jsonl \
   --sensor-path out/sensor.jsonl \
   --dataset-out out/dataset_raw.jsonl \

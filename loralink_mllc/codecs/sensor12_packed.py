@@ -51,7 +51,11 @@ class Sensor12PackedCodec:
     ) -> None:
         if accel_scale <= 0 or gyro_scale <= 0 or rpy_scale <= 0:
             raise ValueError("scales must be > 0")
-        self._scale = _Scales(accel=float(accel_scale), gyro=float(gyro_scale), rpy=float(rpy_scale))
+        self._scale = _Scales(
+            accel=float(accel_scale),
+            gyro=float(gyro_scale),
+            rpy=float(rpy_scale),
+        )
 
     def encode(self, window: Sequence[float]) -> bytes:
         if len(window) % 12 != 0:
@@ -145,4 +149,3 @@ class Sensor12PackedCodec:
             f"gyro=i16@{self._scale.gyro}:"
             f"rpy=i16@{self._scale.rpy}"
         )
-

@@ -18,7 +18,8 @@
 ## TL;DR
 - LoRa UART 페이로드 실험 스캐폴드. 플러그형 코덱, mock 링크, JSONL 로깅 포함.
 - 제약: AUX 없음 -> ToA 추정, 패킷 형식 고정 `LEN|SEQ|PAYLOAD`, `max_payload_bytes` 제한.
-- RAW 코덱: int16 little-endian, scale 32767. LATENT는 코덱 인터페이스 사용 (zlib 예시, BAM 추론 layer_npz_v1).
+- RAW baseline 코덱: `sensor12_packed` (바이너리 on-air 포맷; gps float32 + IMU/rpy int16 fixed-point).
+- LATENT 코덱: 코덱 인터페이스 사용 (zlib 예시, BAM 추론 layer_npz_v1).
 - Quickstart는 in-repo 설정으로 mock Phase 0/1과 metrics를 실행.
 
 ## 실측 대상 센서
@@ -121,7 +122,7 @@ UART 실측용 런타임 템플릿:
 - LATENT: `configs/examples/tx_latent.yaml`, `configs/examples/rx_latent.yaml`
 - BAM: `configs/examples/tx_bam.yaml`, `configs/examples/rx_bam.yaml`
 - JSON legacy: `configs/examples/tx.json`, `configs/examples/rx.json`
-- 매니페스트: `configs/examples/artifacts.json`, `configs/examples/artifacts_zlib.json`
+- 매니페스트: `configs/examples/artifacts_sensor12_packed.json`(RAW baseline), `configs/examples/artifacts.json`(legacy raw:int16), `configs/examples/artifacts_zlib.json`
 - 센서 샘플: `configs/examples/sensor_sample.jsonl`, `configs/examples/sensor_sample.csv`
 
 윈도우 크기, 코덱, 재전송 설정은 `configs/examples/`에서 수정한다.
@@ -131,7 +132,7 @@ JSONL/CSV 입력을 사용해 TX를 구동한다.
 ```bash
 python -m loralink_mllc.cli tx \
   --runspec configs/examples/tx_raw.yaml \
-  --manifest configs/examples/artifacts.json \
+  --manifest configs/examples/artifacts_sensor12_packed.json \
   --sampler jsonl \
   --sensor-path configs/examples/sensor_sample.jsonl \
   --dataset-out out/dataset_raw.jsonl \
@@ -169,7 +170,8 @@ python -m loralink_mllc.cli rx --runspec configs/examples/rx_bam.yaml --manifest
 ## 프로토콜 및 코덱 요약
 - 애플리케이션 프레임: `LEN|SEQ|PAYLOAD`, ACK payload는 1 byte이며 `SEQ`를 echo한다.
 - `max_payload_bytes`는 RunSpec에서 강제된다. 기본값은 E22 UART 제한을 반영한다.
-- RAW 코덱: int16 little-endian, scale 32767 (`loralink_mllc/codecs/raw.py`).
+- RAW baseline 코덱: `sensor12_packed` (gps float32 + IMU/rpy int16 fixed-point).
+- Legacy RAW 코덱: int16 little-endian, scale 32767 (`loralink_mllc/codecs/raw.py`).
 - BAM 코덱: numpy와 BAM 매니페스트가 필요하다 (`docs/bam_codec_artifacts.md`).
 
 ## Documentation map
@@ -246,3 +248,4 @@ python -m loralink_mllc.cli rx --runspec configs/examples/rx_bam.yaml --manifest
 ## Contributing and contact
 이슈와 PR은 환영한다. 큰 변경은 먼저 이슈로 범위를 논의해 달라.
 연락은 GitHub 이슈로 진행한다.
+보안 취약점 제보는 `SECURITY.md`를 참고한다.

@@ -22,4 +22,4 @@
 - Mode (RAW/LATENT) is run-level and carried in RunSpec/logs, not in the packet.
 
 ## Notes
-- This format is the application-level payload over E22 UART P2P, not LoRaWAN MAC payload framing.
+- This format is the application-level payload over E22 UART P2P.

@@ -32,7 +32,7 @@ class JsonlSensorSampler:
         _validate_order(self._order, expected_dims)
         self._fh = self._path.open("r", encoding="utf-8")
 
-    def sample(self) -> Sequence[float]:
+    def _next_sample(self) -> SensorSample:
         while True:
             line = self._fh.readline()
             if not line:
@@ -44,8 +44,15 @@ class JsonlSensorSampler:
             if not stripped:
                 continue
             data = json.loads(stripped)
-            sample = SensorSample.from_dict(data)
-            return sample.vector(self._order)
+            return SensorSample.from_dict(data)
+
+    def sample(self) -> Sequence[float]:
+        sample = self._next_sample()
+        return sample.vector(self._order)
+
+    def sample_with_ts(self) -> tuple[int, Sequence[float]]:
+        sample = self._next_sample()
+        return sample.ts_ms, sample.vector(self._order)
 
 
 class CsvSensorSampler:
@@ -75,7 +82,14 @@ class CsvSensorSampler:
                 raise StopIteration
         return row
 
-    def sample(self) -> Sequence[float]:
+    def _next_sample(self) -> SensorSample:
         row = self._next_row()
-        sample = SensorSample.from_dict(row)
+        return SensorSample.from_dict(row)
+
+    def sample(self) -> Sequence[float]:
+        sample = self._next_sample()
         return sample.vector(self._order)
+
+    def sample_with_ts(self) -> tuple[int, Sequence[float]]:
+        sample = self._next_sample()
+        return sample.ts_ms, sample.vector(self._order)
