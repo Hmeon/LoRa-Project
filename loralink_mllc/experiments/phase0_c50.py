@@ -10,9 +10,9 @@ from loralink_mllc.config.runspec import RunSpec
 from loralink_mllc.experiments.controller import run_pair
 from loralink_mllc.radio.mock import create_mock_link
 from loralink_mllc.runtime.logging import JsonlLogger
+from loralink_mllc.runtime.rx_node import RxNode
 from loralink_mllc.runtime.scheduler import FakeClock
 from loralink_mllc.runtime.tx_node import DummySampler, TxNode
-from loralink_mllc.runtime.rx_node import RxNode
 
 
 def _load_spec(path: str | Path) -> Dict[str, Any]:
@@ -58,8 +58,10 @@ def find_c50(sweep_path: str | Path, out_path: str | Path | None = None) -> Dict
         base_dict["tx"]["max_windows"] = packets_per_profile
         base_dict["logging"]["out_dir"] = str(Path(out_dir) / profile_id)
 
-        tx_dict = _with_overrides(base_dict, {"role": "tx", "run_id": f"{base_runspec.run_id}_{profile_id}_tx"})
-        rx_dict = _with_overrides(base_dict, {"role": "rx", "run_id": f"{base_runspec.run_id}_{profile_id}_rx"})
+        tx_run_id = f"{base_runspec.run_id}_{profile_id}_tx"
+        rx_run_id = f"{base_runspec.run_id}_{profile_id}_rx"
+        tx_dict = _with_overrides(base_dict, {"role": "tx", "run_id": tx_run_id})
+        rx_dict = _with_overrides(base_dict, {"role": "rx", "run_id": rx_run_id})
 
         tx_spec = RunSpec.from_dict(tx_dict)
         rx_spec = RunSpec.from_dict(rx_dict)
@@ -94,7 +96,7 @@ def find_c50(sweep_path: str | Path, out_path: str | Path | None = None) -> Dict
             tx_spec.run_id,
             tx_spec.role,
             tx_spec.mode,
-            tx_spec.phy_profile_id(),
+            tx_spec.phy_id(),
             clock=clock,
         )
         rx_logger = JsonlLogger(
@@ -102,7 +104,7 @@ def find_c50(sweep_path: str | Path, out_path: str | Path | None = None) -> Dict
             rx_spec.run_id,
             rx_spec.role,
             rx_spec.mode,
-            rx_spec.phy_profile_id(),
+            rx_spec.phy_id(),
             clock=clock,
         )
         tx_logger.log_run_start(tx_spec, manifest)

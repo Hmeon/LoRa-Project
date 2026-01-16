@@ -10,9 +10,9 @@ from loralink_mllc.config.runspec import RunSpec
 from loralink_mllc.experiments.controller import run_pair
 from loralink_mllc.radio.mock import create_mock_link
 from loralink_mllc.runtime.logging import JsonlLogger
+from loralink_mllc.runtime.rx_node import RxNode
 from loralink_mllc.runtime.scheduler import FakeClock
 from loralink_mllc.runtime.tx_node import DummySampler, TxNode
-from loralink_mllc.runtime.rx_node import RxNode
 
 
 def _load_json_or_yaml(path: str | Path) -> Dict[str, Any]:
@@ -95,7 +95,7 @@ def run_ab(
             tx_spec.run_id,
             tx_spec.role,
             tx_spec.mode,
-            tx_spec.phy_profile_id(),
+            tx_spec.phy_id(),
             clock=clock,
         )
         rx_logger = JsonlLogger(
@@ -103,7 +103,7 @@ def run_ab(
             rx_spec.run_id,
             rx_spec.role,
             rx_spec.mode,
-            rx_spec.phy_profile_id(),
+            rx_spec.phy_id(),
             clock=clock,
         )
         tx_logger.log_run_start(tx_spec, manifest)

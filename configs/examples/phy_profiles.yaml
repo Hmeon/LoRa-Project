@@ -1,0 +1,99 @@
+version: adr_code_v1
+source: docs/01_design_doc_experiment_plan.md
+profiles:
+  - adr_code: "000"
+    air_speed_preset: 0
+    air_data_rate_kbps: 0.3
+    sf: 12
+    bw_hz: 125000
+    cr: "4/5"
+    tsym_ms: 32.77
+    real_datarate_bps: 293
+    crc_enabled: false
+    header_mode: explicit
+    preamble_symbols: 8
+    ldro: on
+  - adr_code: "001"
+    air_speed_preset: 1
+    air_data_rate_kbps: 1.2
+    sf: 10
+    bw_hz: 250000
+    cr: "4/8"
+    tsym_ms: 4.10
+    real_datarate_bps: 1200
+    crc_enabled: false
+    header_mode: explicit
+    preamble_symbols: 8
+    ldro: on
+  - adr_code: "010"
+    air_speed_preset: 2
+    air_data_rate_kbps: 2.4
+    sf: 10
+    bw_hz: 500000
+    cr: "4/8"
+    tsym_ms: 2.05
+    real_datarate_bps: 2400
+    crc_enabled: false
+    header_mode: explicit
+    preamble_symbols: 8
+    ldro: on
+  - adr_code: "011"
+    air_speed_preset: 3
+    air_data_rate_kbps: 4.8
+    sf: 9
+    bw_hz: 500000
+    cr: "4/7"
+    tsym_ms: 1.23
+    real_datarate_bps: 5000
+    crc_enabled: null
+    header_mode: null
+    preamble_symbols: null
+    ldro: null
+  - adr_code: "100"
+    air_speed_preset: 4
+    air_data_rate_kbps: 9.6
+    sf: 5
+    bw_hz: 125000
+    cr: "4/8"
+    tsym_ms: 0.26
+    real_datarate_bps: 9700
+    crc_enabled: null
+    header_mode: null
+    preamble_symbols: null
+    ldro: null
+  - adr_code: "101"
+    air_speed_preset: 5
+    air_data_rate_kbps: 19.2
+    sf: 5
+    bw_hz: 250000
+    cr: "4/8"
+    tsym_ms: 0.13
+    real_datarate_bps: 19500
+    crc_enabled: null
+    header_mode: null
+    preamble_symbols: null
+    ldro: null
+  - adr_code: "110"
+    air_speed_preset: 6
+    air_data_rate_kbps: 38.4
+    sf: 5
+    bw_hz: 500000
+    cr: "4/8"
+    tsym_ms: 0.06
+    real_datarate_bps: 39000
+    crc_enabled: null
+    header_mode: null
+    preamble_symbols: null
+    ldro: null
+  - adr_code: "111"
+    air_speed_preset: 7
+    air_data_rate_kbps: 62.5
+    sf: 5
+    bw_hz: 500000
+    cr: "4/5"
+    tsym_ms: 0.06
+    real_datarate_bps: 62500
+    crc_enabled: null
+    header_mode: null
+    preamble_symbols: null
+    ldro: null

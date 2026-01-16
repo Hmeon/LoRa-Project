@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from loralink_mllc.runtime.rx_node import RxNode
 from loralink_mllc.runtime.scheduler import Clock
 from loralink_mllc.runtime.tx_node import TxNode
-from loralink_mllc.runtime.rx_node import RxNode
 
 
 def run_pair(

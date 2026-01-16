@@ -1,0 +1,16 @@
+# Phase 4 energy record template (fill after measuring power).
+record_id: "phase4_YYYYMMDD_001"
+phase: phase4
+method:
+  equipment: TBD
+  sampling_hz: TBD
+  integration_window_s: TBD
+  notes: TBD
+runs:
+  - run_id: TBD
+    avg_power_w: TBD
+    duration_s: TBD
+    notes: TBD
+
+# Helper (optional):
+#   python scripts/phase4_energy_report.py --metrics out/phase3/report.json --energy configs/examples/phase4_record.yaml --out out/phase4/energy_report.json

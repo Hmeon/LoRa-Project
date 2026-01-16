@@ -1,0 +1,13 @@
+Metadata-Version: 2.4
+Name: loralink-mllc
+Version: 0.1.0
+Summary: LoRaLink-MLLC LoRa runtime and experiments
+Requires-Python: >=3.11
+License-File: LICENSE_TODO.md
+Requires-Dist: PyYAML>=6.0
+Provides-Extra: dev
+Requires-Dist: pytest>=7.4; extra == "dev"
+Requires-Dist: ruff>=0.5; extra == "dev"
+Provides-Extra: uart
+Requires-Dist: pyserial>=3.5; extra == "uart"
+Dynamic: license-file

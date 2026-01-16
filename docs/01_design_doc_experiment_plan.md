@@ -1,11 +1,27 @@
-﻿# Experiment Design Sheet (UART + E22-900T22S / SX1262) - Payload Reduction via ML Lossy Compression (Multi-layer BAM)
+# Experiment Design Sheet (UART + E22-900T22S / SX1262) - Payload Reduction via ML Lossy Compression (Multi-layer BAM)
 **Purpose:** This document is a single source of truth for **packet format, UART control assumptions, LoRa PHY profiles (ADR-CODE table), logging schema, and phase-based experiments** for the project:
-> "Improve LoRa communication in interference/loss environments by reducing payload size while preserving information using ML lossy compression (multi-layer BAM)."
+> **"Improve LoRa communication in interference/loss environments by reducing payload size while preserving information using ML lossy compression (multi-layer BAM)."**
+
+This repo is the completion/deployment target for the earlier `ChirpChirp-main/` project.
+
+**Final goal (updated):** Use ML to predict and compensate for delay and packet loss on
+field LPWA LoRa/LoRaWAN networks (E22-900T22S / SX1262), measure latency, packet loss,
+and signal strength, demonstrate PDR improvement and latency reduction, and deliver
+a reproducible MVP prototype. The current phases focus on payload reduction, logging,
+and codec validation; predictive/compensation modeling and LoRaWAN support are not
+implemented in this repo yet.
+
+**TODO (implementation gaps):**
+- Define LoRaWAN scope (class/region/frequency) and implement runtime support.
+- Define latency metrics (ACK RTT vs E2E) and measurement workflow.
+- Add RSSI/SNR capture path for AT UART modules.
+- Implement ML-based delay/loss prediction and recovery/optimization logic.
+- Confirm Air Speed preset to PHY mapping with vendor documentation; current mapping uses ADR-CODE table.
 
 **Key constraints to respect (non-negotiable):**
 1. **UART-based** control/data path between Raspberry Pi and E22-900T22S.
-2. **E22 supports AUX, but the HAT/board may not expose it**. If AUX is unavailable, **true TxDone / Time-on-Air (ToA) cannot be measured directly**.
-3. Therefore, **ToA is estimated** using a **LoRa calculator/formula** and must be recorded as an **approximation**.
+2. **E22-900T22S is a HAT module without AUX pin**, so **true TxDone / Time-on-Air (ToA) cannot be measured directly**.
+3. Therefore, **ToA is estimated** using a **LoRa calculator** (or equivalent formula) and must be recorded as an **approximation**.
 4. The **application-layer packet format is fixed**: `LEN(1B) + SEQ(1B) + PAYLOAD(variable)`.
 5. **E22 UART P2P TX packet length limit is 240 bytes**. With a 2-byte app header, `LEN <= 238` and `(2 + LEN) <= 240`.
 
@@ -14,12 +30,11 @@
 ## 1) Project Targets (KPI)
 The project is designed to enable field deployment by improving reliability and efficiency through payload reduction.
 
-- **PDR:** improve relative to baseline
-- **ETX:** reduce relative to baseline
-- **Power/Energy:** reduce relative to baseline
-- **Reconstruction fidelity:** keep MAE/MSE within acceptable bounds
+- **PDR:** +30% or more (relative to baseline)
+- **ETX:** -20% or more (relative to baseline)
+- **Power:** -20% or more (relative to baseline)
 
-Numeric targets must be defined per experiment run and recorded with the metrics report.
+> NOTE: KPI computation method is defined in Section 9.
 
 ---
 
@@ -41,23 +56,32 @@ Numeric targets must be defined per experiment run and recorded with the metrics
   - UART receive from E22
   - Validate packet (CRC/SEQ)
   - After training: **BAM decode -> reconstruct `x_hat`**
-  - Log link metrics (RSSI/SNR if available), rx success/failure, and reconstruction metrics (MAE/MSE)
+  - Log link metrics (RSSI/SNR if available), RX success/failure, and reconstruction metrics (MAE/MSE)
 
 ---
 
 ## 3) UART Control Path (Design Requirements)
 The LoRa module is controlled/used via UART.
 
-### 3.1 UART parameters (must be fixed and recorded for reproducibility)
-- Serial port device (e.g., `/dev/serial0`, `/dev/ttyS0`, `/dev/ttyAMA0`)
-- Baud rate
-- Parity / stop bits / flow control
-- Module mode switching pins/sequence (if applicable on this HAT)
-- Max UART payload per write (buffering constraints)
+### 3.1 UART parameters (MUST be fixed for reproducibility)
+- `serial port device`: TX `/dev/ttyAMA2`, RX `/dev/ttyAMA0`
+- `baud rate`: 9600
+- `parity / stop bits / flow control`: N / 1 / none
+- `TBD: module mode switching pins/sequence` (if applicable on this HAT)
+- `TBD: max UART payload per write` (buffering constraints)
 
 > The implementation must **not assume AUX-based timing**. Any "TX complete" decision must be derived from:
-- Module response over UART (if available), OR
-- Conservative wait time = `ToA_est + guard`, where `ToA_est` is calculated from PHY profile + payload size.
+- module response over UART (if available), OR
+- conservative wait time = `ToA_est + guard`, where `ToA_est` is calculated from PHY profile + payload size.
+
+### 3.2 Waveshare SX1262 LoRa HAT constraints (field hardware)
+- The HAT uses an onboard MCU (ESP32-C3) and only exposes UART TX/RX, Busy, and Reset on the header.
+  Direct SPI register access and DIO1 IRQ are not available.
+- Raspberry Pi can only use AT UART commands; LibDriver-style register control is not possible.
+- Air Speed presets 0..7 are fixed PHY bundles inside the AT firmware.
+  Record the preset index (and firmware version) in the UART record.
+- Because SF/BW/CR cannot be set directly on this hardware, any PHY values used for ToA
+  must be derived from the vendor's Air Speed table. If the mapping is unknown, mark it as TODO.
 
 ---
 
@@ -67,18 +91,27 @@ The LoRa module is controlled/used via UART.
 - Accelerometer: ax, ay, az (3)
 - Gyroscope: gx, gy, gz (3)
 - Attitude: roll, pitch, yaw (3)
+Fixed vector order (must match RunSpec dims=12):
+`[lat, lon, alt, ax, ay, az, gx, gy, gz, roll, pitch, yaw]`
+Fixed units:
+- lat, lon: degrees
+- alt: meters
+- accel: m/s^2
+- gyro: deg/s
+- roll, pitch, yaw: degrees
 
-### 4.2 Pattern definition (must be fixed before training)
+### 4.2 Pattern definition (MUST be fixed before training)
 Because data is time-series, the model input must be defined as a **window pattern**.
 
 - Single step: `x(t) in R^12`
 - Window pattern (recommended):
   `X(t) = [x(t-W+1), ..., x(t)] in R^(12*W)`
 
-**Fixed parameters (record per run):**
-- `delta_t` = sampling interval
+**Fixed parameters (TBD until confirmed):**
+- `sample_hz` = sampling rate (1 / delta_t)
 - `W` = window length (number of steps)
-- `T_send` = transmit interval (for example, 1 window per packet)
+- `stride` = window stride (in samples)
+- `T_send` = transmit interval (e.g., "1 window per packet")
 
 > All accuracy metrics (MAE/MSE) and matching of `x_true` <-> `x_hat` are defined **per window**.
 
@@ -96,12 +129,13 @@ Because 12D sensors have different physical scales, normalization is mandatory.
 - `mu[12]`, `sigma[12]`
 - version id + dataset version reference
 
-If GPS coordinate conversion is used (for example, local tangent plane), specify it in the preprocessing spec and store parameters as artifacts.
+`TBD:` coordinate conversion for GPS (e.g., local tangent plane).
+If used, it must be formalized and stored as part of preprocessing spec.
 
 ---
 
 ## 6) Fixed Application Packet Format
-### 6.1 Packet layout (must not change)
+### 6.1 Packet layout (MUST NOT CHANGE)
 | Field | Size | Meaning | Must Log |
 |---|---:|---|---|
 | LEN | 1 byte | Number of bytes in PAYLOAD | YES (`payload_bytes`) |
@@ -113,9 +147,15 @@ Definition:
 
 **E22 UART constraint:** TX packet length <= 240 bytes in P2P UART mode. With a 2-byte app header, `LEN <= 238` and `(2 + LEN) <= 240`.
 
-### 6.2 Run modes and ACK framing
-- `MODE=RAW` and `MODE=LATENT` are run-level settings and must be logged, but **no mode byte is added to the packet**.
-- ACK is a separate frame: `LEN=1`, `PAYLOAD[0]=ACK_SEQ` (echoed uplink `SEQ`). ACK frame `SEQ` may increment independently.
+### 6.2 Payload modes (MUST be explicitly labeled in logs)
+- `MODE=RAW`: raw or lightly packed sensor window (baseline)
+- `MODE=LATENT`: BAM latent vector `z` (compressed)
+- `MODE=ACK`: minimal ACK response (optional, ETX measurement)
+
+**Mode selection:** no mode byte is added to the packet. Mode is run-level metadata and must be logged.
+ACK is a response frame type, not a run mode; log it via `ack_received`/`ack_sent` events.
+
+**ACK framing:** ACK payload is exactly 1 byte `ACK_SEQ` (echoed uplink `SEQ`). ACK frames use the same outer format with `LEN=1` and an independent `SEQ`.
 
 ---
 
@@ -140,18 +180,32 @@ These profiles were **derived by reversing parameters with a LoRa calculator** a
 Create a versioned config (human + machine readable):
 - `phy_profiles.json` or `phy_profiles.yaml`
 
-Each profile entry must store:
-- `adr_code` (for example, "000")
-- `sf`, `bw_khz`, `cr` (for example, "4/5")
+Each profile entry MUST store:
+- `adr_code` (e.g., "000")
+- `sf`, `bw_hz`, `cr` (e.g., "4/5")
 - `tsym_ms` (from table)
 - `real_datarate_bps` (from table)
-- `crc_enabled`
-- `header_mode` (explicit/implicit)
-- `preamble_symbols`
-- `ldro` (DE / low data rate optimization)
+- `crc_enabled` (TBD; see 7.3)
+- `header_mode` (explicit/implicit, TBD)
+- `preamble_symbols` (TBD)
+- `ldro` (DE / low data rate optimization, TBD)
 
-### 7.3 CRC/Header assumptions (must be confirmed, not guessed)
-CRC/header/preamble/LDRO settings must be confirmed on the E22 module and recorded. No ToA estimates are considered valid unless these are pinned.
+Mapping notes:
+- Use Hz in machine configs (e.g., 125000) even if the table shows kHz.
+- `crc_enabled` maps to RunSpec `crc_on`.
+- `header_mode` (explicit/implicit) maps to RunSpec `explicit_header`.
+- `preamble_symbols` maps to RunSpec `preamble`.
+- Air Speed preset values (0..7) and air data rates are documented in
+  `docs/E22-900T22S_User_Manual_Deconstructed.md` (REG0 bits 2..0). On AT-only hardware,
+  use the preset index to select a row in `configs/examples/phy_profiles.yaml`.
+
+### 7.3 CRC/Header settings (pinned for current field runs)
+- crc_enabled: false
+- header_mode: explicit
+- preamble_symbols: 8
+- ldro: on
+
+No ToA estimates are considered valid unless these are pinned.
 
 ---
 
@@ -162,10 +216,10 @@ CRC/header/preamble/LDRO settings must be confirmed on the E22 module and record
 
 ### 8.2 Required ToA estimation inputs
 Per packet:
-- `adr_code` -> `(sf, bw, cr, tsym_ms)`
+- `adr_code` -> `(sf, bw_hz, cr, tsym_ms)`
 - `payload_bytes` (LEN)
 Global/fixed:
-- `crc_enabled`, `header_mode`, `ldro`, `preamble_symbols`
+- `crc_enabled`, `header_mode`, `ldro`, `preamble_symbols` (see 7.2 mapping notes)
 
 ### 8.3 Output field
 - `toa_ms_est`: estimated ToA in ms (approximate; must be labeled as such)
@@ -186,7 +240,7 @@ Where:
 ### 8.5 Practical scheduling guard time
 Because estimation is imperfect and UART/module buffering may add delay:
 - `tx_wait_ms = toa_ms_est + guard_ms`
-- `guard_ms` must be chosen after initial module characterization and recorded.
+- `TBD: guard_ms` (choose after initial module characterization)
 
 ---
 
@@ -194,6 +248,7 @@ Because estimation is imperfect and UART/module buffering may add delay:
 ### 9.1 PDR
 - `PDR = (# successfully received DATA packets) / (# sent DATA packets)`
 - Success is determined by RX log with valid SEQ and integrity checks.
+If only TX logs are available and ACK is enabled, use `ack_received` as a proxy for RX success.
 
 ### 9.2 ETX (requires ACK mode to be unambiguous)
 If ACK is enabled:
@@ -201,19 +256,19 @@ If ACK is enabled:
 
 ACK minimal policy:
 - ACK payload contains `ACK_SEQ(1B)` referencing the DATA `SEQ`.
-- ACK uses the same channel by default; if a separate channel is configured, record it in run artifacts.
 
 Required retransmission controls (must be fixed):
 - `R_max` = maximum retries
 - `T_ack` = ACK timeout
+- `TBD: ACK channel selection` (recommended: separate channel or explicit mode flag)
 
 ### 9.3 Power / Energy
-- Define whether power includes Raspberry Pi or only the LoRa module.
+- Must define whether power includes Raspberry Pi or only the LoRa module.
 - Required outputs (choose at least one):
   - average power over fixed duration
   - energy per successfully delivered window
   - energy per packet attempt
-- Record measurement equipment, sampling rate, and integration window in run artifacts.
+- `TBD: measurement equipment + sampling rate + integration window`
 
 ### 9.4 Reconstruction accuracy (information preservation)
 Compute per window:
@@ -221,50 +276,47 @@ Compute per window:
 Additionally compute per sensor group (minimum):
 - GPS(3), Acc(3), Gyro(3), RPY(3)
 
-Aggregation rule must be defined and recorded with metrics computations.
+Aggregation rule must be pinned:
+- `TBD: aggregate method` (e.g., average over dims, average over windows)
 
 ---
 
 ## 10) Logging Schema (Minimum Required Fields)
-All logs must be machine-parsable and keyed by `seq` + `window_id`.
+All logs are JSONL with one event per line.
 
-### 10.1 TX log (DATA)
-- `ts_tx`
-- `seq`
-- `payload_bytes`
-- `mode` (RAW/LATENT)
-- `window_id` (reference to stored ground truth)
-- `adr_code` + `phy_profile_id`
-- `try_idx` (0..R_max)
-- `toa_ms_est` (optional during collection; mandatory during analysis)
-- `uart_write_len` (optional but helpful)
-- `tx_power_dbm` (if controllable)
-- `channel` / `address` (module config identifiers)
+### 10.1 Common fields (all events)
+- `ts_ms`
+- `run_id`
+- `role` (tx or rx)
+- `mode` (RAW or LATENT)
+- `event`
+- `phy_id`
 
-### 10.2 RX log (DATA)
-- `ts_rx`
-- `seq`
-- `payload_bytes`
-- `mode`
-- `adr_code` + `phy_profile_id`
-- `crc_ok` (or integrity ok)
-- `rssi`, `snr` (if available from module)
-- `window_id` (matched to seq)
-- `reconstruction_ref` (pointer to `x_hat`)
+### 10.2 TX events
+- `tx_sent`: `seq`, `payload_bytes`, `toa_ms_est`, `guard_ms`, `attempt`
+- `ack_received`: `ack_seq`, `rtt_ms` (optional: `window_id`)
+- `tx_failed`: `seq`, `reason`, `attempts`
+Optional: `window_id`, `adr_code`, `uart_write_len`, `tx_power_dbm`, `channel`, `address`.
+Note: the runtime logs `window_id` on TX events when `--dataset-out` is used so post-run
+analysis can join delivered windows to `dataset_raw.jsonl`.
 
-### 10.3 ACK log (if enabled)
-- `ts_ack_rx` (TX side)
-- `ack_seq`
-- `ack_received` (bool)
-- `ack_rtt_ms`
-- `etx_counter`
+### 10.3 RX events
+- `rx_ok`: `seq`, `payload_bytes`
+- `rx_parse_fail`: `reason`
+- `ack_sent`: `ack_seq`
+Optional (TBD): `window_id`, `adr_code`, `crc_ok`, `rssi_dbm`, `snr`.
+Note: `rssi_dbm` can be logged when the module appends an RSSI byte (REG3 bit 7) and the runtime is run with `--uart-rssi-byte`.
 
-### 10.4 Artifacts
-- `dataset_version`
-- `preprocessing_version` (norm + optional GPS transform)
-- `model_version` (BAM config + weights)
-- `phy_profiles_version`
-- `experiment_run_id`
+### 10.4 Reconstruction events (LATENT)
+- `recon_done`: `seq`, `mae`, `mse`
+- `recon_failed`: `seq`, `reason`
+- `recon_not_implemented`: `seq`, `reason`
+
+### 10.5 Run start
+- `run_start` embeds the RunSpec and `artifacts_manifest`.
+
+### 10.6 Artifacts manifest
+- `codec_id`, `codec_version`, `payload_schema_hash`, `norm_params_hash`, `git_commit`, `created_at`
 
 ---
 
@@ -282,9 +334,9 @@ The project follows a strict order:
 
 | ID | Goal | Fixed | Variables | Procedure | Outputs | Stop Rule |
 |---|---|---|---|---|---|---|
-| P0-1 | Find C50 for baseline PHY | `adr_code` fixed (start with 000 unless specified), `payload_bytes` fixed, `T_send` fixed | distance / obstacle / antenna orientation / tx_power (if available) | transmit N packets and log RX success | PDR, RSSI/SNR dist, burst loss stats | stable PDR 45-55% across repeated runs |
+| P0-1 | Find C50 for baseline PHY | `adr_code` fixed (project range: 000-010), `payload_bytes` fixed, `T_send` fixed | distance / obstacle / antenna orientation / tx_power (if available) | transmit N packets and log RX success | PDR, RSSI/SNR dist, burst loss stats | stable PDR 45-55% across repeated runs |
 
-**C50 definition must include:**
+**C50 definition MUST include:**
 - `adr_code`, `payload_bytes`, and physical setup notes (distance/obstacles)
 
 > If `adr_code` changes, C50 may change. Treat C50 as `C50(adr_code, payload_bytes)` unless proven otherwise.
@@ -301,12 +353,14 @@ The project follows a strict order:
 
 | ID | Goal | Fixed | Design Axes | Procedure | Outputs | Stop Rule |
 |---|---|---|---|---|---|---|
-| P2-1 | Train multi-layer BAM | split rule fixed, preprocessing fixed | `W`, latent dim `k`, layer counts/neurons | train/evaluate | `model.bin` + `model_config.json` + `norm.json` | candidate set completed |
+| P2-1 | Train multi-layer BAM | split rule fixed, preprocessing fixed | `W`, latent dim `k`, layer counts/neurons | train/evaluate | `layer_*.npz` + `bam_manifest.json` + `norm.json` | candidate set completed |
 
 Mapping rule:
 - `k` determines **compressed payload size** (after quantization/packing policy).
 
-Numeric representation for latent vector over-the-air must be specified (float32/float16/int8/int16 packing policy impacts `payload_bytes`).
+Numeric representation for latent vector over-the-air:
+- Packing must be one of `float32`, `float16`, `int8`, `int16`.
+- The chosen packing and scale must be recorded in `bam_manifest.json` and drive `payload_bytes`.
 
 ### Phase 3 - On-air Validation (Payload Reduction)
 **Goal:** prove that smaller payload improves link metrics while preserving information.
@@ -334,7 +388,7 @@ Numeric representation for latent vector over-the-air must be specified (float32
 Baseline must be explicitly defined to compute KPI improvements.
 
 - Baseline mode: `MODE=RAW`
-- Baseline payload structure: specify RAW window packing rule in RunSpec/codec artifacts
+- Baseline payload structure: `sensor12_packed` v1 (30 bytes/step; gps float32 + IMU/rpy int16 fixed-point).
 - Baseline PHY: choose one ADR-CODE and keep constant (recommended: `000` for robust link unless protocol requires otherwise)
 
 Improvement formulas:
@@ -370,8 +424,9 @@ Improvement formulas:
 - `phy_profiles.(json|yaml)` (includes ADR-CODE table fields + CRC/header/preamble/LDRO decisions)
 - `experiment_design.md` (this file)
 - `dataset_raw/` (TX ground truth + timestamps)
-- `tx_log.csv`, `rx_log.csv`, `ack_log.csv` (if ACK enabled)
-- `models/<model_version>/{model.bin, model_config.json, norm.json}`
+- `tx_log.jsonl`, `rx_log.jsonl` (ACK events recorded in TX log)
+- `models/<model_version>/{layer_*.npz, norm.json}`
+- `models/<model_version>/bam_manifest.json` (BAM codec manifest; see docs/bam_codec_artifacts.md)
 - `analysis_report.md` (PDR/ETX/Power/MAE/MSE + ToA_est caveat)
 
 ---

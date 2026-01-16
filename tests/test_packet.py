@@ -30,3 +30,12 @@ def test_packet_payload_too_large() -> None:
         Packet(payload=bytes(256), seq=0).to_bytes()
 
 
+def test_packet_max_payload_bytes_cap() -> None:
+    packet = Packet(payload=b"abcd", seq=1)
+    with pytest.raises(PacketPayloadTooLarge):
+        packet.to_bytes(max_payload_bytes=3)
+    frame = bytes([3, 1]) + b"abc"
+    with pytest.raises(PacketPayloadTooLarge):
+        Packet.from_bytes(frame, max_payload_bytes=2)
+
+

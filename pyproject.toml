@@ -12,6 +12,15 @@ dev = [
   "pytest>=7.4",
   "ruff>=0.5",
 ]
+uart = [
+  "pyserial>=3.5",
+]
+bam = [
+  "numpy>=1.26",
+]
+viz = [
+  "matplotlib>=3.8",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -19,6 +28,11 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+exclude = [
+  "ChirpChirp-main",
+  "out",
+  ".pytest_cache",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B"]

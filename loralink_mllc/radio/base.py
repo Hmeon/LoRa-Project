@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import Protocol, runtime_checkable
 
 
 class IRadio(ABC):
@@ -15,4 +16,10 @@ class IRadio(ABC):
     @abstractmethod
     def close(self) -> None:
         raise NotImplementedError
+
+
+@runtime_checkable
+class IRxRssi(Protocol):
+    def last_rx_rssi_dbm(self) -> int | None:
+        ...
 

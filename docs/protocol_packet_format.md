@@ -6,7 +6,9 @@
 **Field rules:**
 - `LEN` is the payload length in bytes (0..255 by spec).
 - `SEQ` is 1 byte and wraps 0..255. Uniqueness is enforced by `run_id + seq`.
-- `PAYLOAD` is raw bytes (either RAW window packing or LATENT payload).
+- `PAYLOAD` is **binary bytes** produced by the selected codec (RAW baseline: `sensor12_packed`, LATENT: BAM packing).
+- JSON/YAML are used only for configs, datasets, and logs (never sent on-air).
+- `max_payload_bytes` in RunSpec enforces a safety cap; defaults match the E22 UART limit noted below.
 
 **E22 UART constraint (P2P mode):** TX packet length is limited to 240 bytes. With a 2-byte app header, `LEN <= 238` and `(2 + LEN) <= 240`.
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+
 from loralink_mllc.config.runspec import PhySpec
 
 

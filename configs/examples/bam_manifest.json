@@ -1,0 +1,14 @@
+{
+  "manifest_version": "1",
+  "model_format": "layer_npz_v1",
+  "model_path": "models/bam_identity",
+  "latent_dim": 8,
+  "packing": "int16",
+  "scale": 32767,
+  "delta": 0.0,
+  "input_dims": 12,
+  "window_W": 1,
+  "window_stride": 1,
+  "norm_path": "models/bam_identity/norm.json",
+  "notes": "example manifest; generate toy weights via scripts/make_bam_identity.py"
+}

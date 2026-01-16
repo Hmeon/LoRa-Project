@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from typing import Callable, Sequence
 
-from loralink_mllc.codecs import ICodec, CodecError
+from loralink_mllc.codecs import CodecError, ICodec
 from loralink_mllc.config.runspec import RunSpec
 from loralink_mllc.protocol.packet import Packet, PacketError
+from loralink_mllc.radio.base import IRadio, IRxRssi
 from loralink_mllc.runtime.logging import JsonlLogger
 from loralink_mllc.runtime.scheduler import Clock, RealClock
-from loralink_mllc.radio.base import IRadio
 
 
 class RxNode:
@@ -28,17 +28,20 @@ class RxNode:
         self._ack_seq = 0
         self._stop = False
         self._truth_provider = truth_provider
+        self._max_payload_bytes = runspec.max_payload_bytes
 
     def stop(self) -> None:
         self._stop = True
 
-    def _compute_errors(self, truth: Sequence[float], recon: Sequence[float]) -> tuple[float, float]:
+    def _compute_errors(
+        self, truth: Sequence[float], recon: Sequence[float]
+    ) -> tuple[float, float]:
         if len(truth) != len(recon):
             raise ValueError("truth/recon length mismatch")
         if not truth:
             return 0.0, 0.0
-        mae = sum(abs(a - b) for a, b in zip(truth, recon)) / len(truth)
-        mse = sum((a - b) ** 2 for a, b in zip(truth, recon)) / len(truth)
+        mae = sum(abs(a - b) for a, b in zip(truth, recon, strict=True)) / len(truth)
+        mse = sum((a - b) ** 2 for a, b in zip(truth, recon, strict=True)) / len(truth)
         return mae, mse
 
     def process_once(self) -> None:
@@ -48,14 +51,16 @@ class RxNode:
         if frame is None:
             return
         try:
-            packet = Packet.from_bytes(frame)
+            packet = Packet.from_bytes(frame, max_payload_bytes=self._max_payload_bytes)
         except PacketError as exc:
             self._logger.log_event("rx_parse_fail", {"reason": str(exc)})
             return
-        self._logger.log_event(
-            "rx_ok",
-            {"seq": packet.seq, "payload_len": len(packet.payload)},
-        )
+        rx_payload: dict[str, object] = {"seq": packet.seq, "payload_bytes": len(packet.payload)}
+        if isinstance(self._radio, IRxRssi):
+            rssi_dbm = self._radio.last_rx_rssi_dbm()
+            if rssi_dbm is not None:
+                rx_payload["rssi_dbm"] = rssi_dbm
+        self._logger.log_event("rx_ok", rx_payload)
         if self._runspec.mode == "LATENT":
             try:
                 recon = self._codec.decode(packet.payload)
@@ -69,10 +74,15 @@ class RxNode:
                         "recon_done",
                         {"seq": packet.seq, "mae": mae, "mse": mse},
                     )
+            except NotImplementedError as exc:
+                self._logger.log_event(
+                    "recon_not_implemented",
+                    {"seq": packet.seq, "reason": str(exc)},
+                )
             except (CodecError, ValueError) as exc:
                 self._logger.log_event("recon_failed", {"seq": packet.seq, "reason": str(exc)})
         ack_packet = Packet(payload=bytes([packet.seq]), seq=self._ack_seq)
-        self._radio.send(ack_packet.to_bytes())
+        self._radio.send(ack_packet.to_bytes(max_payload_bytes=self._max_payload_bytes))
         self._logger.log_event("ack_sent", {"ack_seq": packet.seq})
         self._ack_seq = (self._ack_seq + 1) % 256
 

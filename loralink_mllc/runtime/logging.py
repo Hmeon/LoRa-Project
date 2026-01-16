@@ -16,7 +16,7 @@ class JsonlLogger:
         run_id: str,
         role: str,
         mode: str,
-        phy_profile_id: str,
+        phy_id: str,
         clock: Clock | None = None,
     ) -> None:
         self._dir = Path(out_dir)
@@ -26,7 +26,7 @@ class JsonlLogger:
         self._run_id = run_id
         self._role = role
         self._mode = mode
-        self._phy_profile_id = phy_profile_id
+        self._phy_id = phy_id
         self._fh = self._path.open("a", encoding="utf-8")
 
     def _base_event(self, event: str) -> Dict[str, Any]:
@@ -36,7 +36,7 @@ class JsonlLogger:
             "event": event,
             "role": self._role,
             "mode": self._mode,
-            "phy_profile_id": self._phy_profile_id,
+            "phy_id": self._phy_id,
         }
 
     def log_run_start(self, runspec: RunSpec, manifest: ArtifactsManifest) -> None:

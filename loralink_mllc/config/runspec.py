@@ -3,10 +3,17 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Literal
+from typing import Any, Dict, Iterable, Literal
 
-Role = Literal["tx", "rx", "controller"]
+Role = Literal["tx", "rx"]
 Mode = Literal["RAW", "LATENT"]
+
+
+def _require_keys(data: Dict[str, Any], keys: Iterable[str], context: str) -> None:
+    missing = [key for key in keys if key not in data]
+    if missing:
+        joined = ", ".join(missing)
+        raise ValueError(f"missing {context} keys: {joined}")
 
 
 @dataclass(frozen=True)
@@ -21,6 +28,11 @@ class PhySpec:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "PhySpec":
+        _require_keys(
+            data,
+            ["sf", "bw_hz", "cr", "preamble", "crc_on", "explicit_header", "tx_power_dbm"],
+            "phy",
+        )
         return cls(
             sf=int(data["sf"]),
             bw_hz=int(data["bw_hz"]),
@@ -42,13 +54,16 @@ class PhySpec:
 class WindowSpec:
     dims: int = 12
     W: int = 1
+    stride: int = 1
     sample_hz: float = 1.0
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "WindowSpec":
+        _require_keys(data, ["W", "sample_hz"], "window")
         return cls(
             dims=int(data.get("dims", 12)),
             W=int(data["W"]),
+            stride=int(data.get("stride", 1)),
             sample_hz=float(data["sample_hz"]),
         )
 
@@ -61,6 +76,7 @@ class CodecSpec:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "CodecSpec":
+        _require_keys(data, ["id", "version"], "codec")
         params = data.get("params") or {}
         return cls(id=str(data["id"]), version=str(data["version"]), params=dict(params))
 
@@ -75,6 +91,7 @@ class TxSpec:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "TxSpec":
+        _require_keys(data, ["guard_ms", "ack_timeout_ms", "max_retries"], "tx")
         return cls(
             guard_ms=int(data["guard_ms"]),
             ack_timeout_ms=int(data["ack_timeout_ms"]),
@@ -90,6 +107,7 @@ class LoggingSpec:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "LoggingSpec":
+        _require_keys(data, ["out_dir"], "logging")
         return cls(out_dir=str(data["out_dir"]))
 
 
@@ -103,10 +121,16 @@ class RunSpec:
     codec: CodecSpec
     tx: TxSpec
     logging: LoggingSpec
+    max_payload_bytes: int = 238
     artifacts_manifest: str | None = None
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "RunSpec":
+        _require_keys(
+            data,
+            ["run_id", "role", "mode", "phy", "window", "codec", "tx", "logging"],
+            "runspec",
+        )
         return cls(
             run_id=str(data["run_id"]),
             role=data["role"],
@@ -116,18 +140,21 @@ class RunSpec:
             codec=CodecSpec.from_dict(data["codec"]),
             tx=TxSpec.from_dict(data["tx"]),
             logging=LoggingSpec.from_dict(data["logging"]),
+            max_payload_bytes=int(data.get("max_payload_bytes", 238)),
             artifacts_manifest=data.get("artifacts_manifest"),
         )
 
     def validate(self) -> None:
         if not self.run_id:
             raise ValueError("run_id must be non-empty")
-        if self.role not in ("tx", "rx", "controller"):
+        if self.role not in ("tx", "rx"):
             raise ValueError(f"invalid role: {self.role}")
         if self.mode not in ("RAW", "LATENT"):
             raise ValueError(f"invalid mode: {self.mode}")
         if self.window.dims <= 0 or self.window.W <= 0:
             raise ValueError("window dims and W must be > 0")
+        if self.window.stride <= 0:
+            raise ValueError("window stride must be > 0")
         if self.window.sample_hz <= 0:
             raise ValueError("window sample_hz must be > 0")
         if self.phy.sf <= 0 or self.phy.bw_hz <= 0 or self.phy.cr <= 0:
@@ -136,8 +163,13 @@ class RunSpec:
             raise ValueError("tx guard_ms must be >=0 and ack_timeout_ms > 0")
         if self.tx.max_retries < 0 or self.tx.max_inflight <= 0:
             raise ValueError("tx retries/inflight must be >= 0")
+        if self.max_payload_bytes <= 0 or self.max_payload_bytes > 255:
+            raise ValueError("max_payload_bytes must be 1..255")
 
     def phy_profile_id(self) -> str:
+        return self.phy.profile_id()
+
+    def phy_id(self) -> str:
         return self.phy.profile_id()
 
     def as_dict(self) -> Dict[str, Any]:
@@ -157,6 +189,7 @@ class RunSpec:
             "window": {
                 "dims": self.window.dims,
                 "W": self.window.W,
+                "stride": self.window.stride,
                 "sample_hz": self.window.sample_hz,
             },
             "codec": {
@@ -172,6 +205,7 @@ class RunSpec:
                 "max_windows": self.tx.max_windows,
             },
             "logging": {"out_dir": self.logging.out_dir},
+            "max_payload_bytes": self.max_payload_bytes,
             "artifacts_manifest": self.artifacts_manifest,
         }
 

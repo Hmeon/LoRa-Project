@@ -4,10 +4,27 @@ This project measures both **link behavior** and **information preservation**. A
 
 ## Link metrics
 - **PDR (Packet Delivery Ratio)**
-  - `PDR = rx_ok / tx_sent` for data frames
+  - If TX and RX logs are both available: `PDR = rx_ok / tx_sent`
+  - If only TX logs are available and ACK is enabled: `PDR = ack_received / tx_sent` (proxy)
 - **ETX (Expected Transmission Count)**
   - `ETX = total_tx_attempts / acked_packets`
   - ACK payload is exactly 1 byte `ACK_SEQ` (echoed uplink `SEQ`)
+
+Notes:
+- In this repo's metrics output, `acked_count` is the number of `ack_received` events (not unique
+  `ack_seq` values) so it remains correct even when 1-byte `SEQ` wraps.
+- `unique_windows_sent`, `delivered_windows`, and `delivery_ratio` are window-level fields derived
+  from `window_id` in TX logs.
+
+## Latency and signal metrics (TBD)
+- **Latency**
+  - `rtt_ms` is logged on `ack_received` and can be used as a proxy for ACK round-trip time.
+  - End-to-end latency requires synchronized clocks and a defined start/end event (TODO).
+- **RSSI/SNR**
+  - If the module is configured to append an RSSI byte after each received UART frame (REG3 bit 7),
+    run TX/RX with `--uart-rssi-byte`. The runtime logs `rssi_dbm` (computed as `rssi_byte - 256`)
+    on `rx_ok` and `ack_received` when available.
+  - SNR capture is not implemented (TODO).
 
 ## Energy metrics
 Choose at least one and record the measurement method:
@@ -21,5 +38,10 @@ Choose at least one and record the measurement method:
 - Aggregation rules must be recorded in the metrics report
 
 ## Reporting rules
-- All metrics must reference the same `run_id` and `phy_profile_id`.
+- All metrics must reference the same `run_id` and `phy_id`.
 - Report both absolute values and relative deltas against baseline.
+
+## Tooling note
+`python -m loralink_mllc.cli metrics` outputs summary stats when fields are present:
+- `ack_rtt_ms` from `ack_received.rtt_ms`
+- `rssi_dbm` from `rx_ok.rssi_dbm` and/or `ack_received.rssi_dbm`

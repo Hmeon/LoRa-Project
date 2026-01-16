@@ -1,387 +1,203 @@
-﻿<div align="center">
-
 # LoRaLink-MLLC
-**ML-based Lossy Compression for Robust LoRa (UART, E22-900T22S / SX1262) under Interference and Loss**
 
-![Status](https://img.shields.io/badge/status-active-success)
-![Platform](https://img.shields.io/badge/platform-Raspberry%20Pi-blue)
-![Radio](https://img.shields.io/badge/radio-SX1262%20(E22--900T22S)-informational)
-![Interface](https://img.shields.io/badge/link-UART-yellow)
-![Docs](https://img.shields.io/badge/docs-available-brightgreen)
-
-**Core thesis**
-Reduce **LoRa payload size** while preserving **information content** via **ML-based lossy compression**, and verify that smaller payloads yield higher **PDR**, lower **ETX**, and lower **power** in lossy/interference regimes.
-
----
-
-**Quick Links**
-[Design Doc](docs/01_design_doc_experiment_plan.md) | [Packet Format](docs/protocol_packet_format.md) | [Radio Constraints](docs/radio_constraints_e22.md) | [ToA Estimation](docs/toa_estimation.md) | [ADR-CODE PHY Profiles](docs/phy_profiles_adr_code.md) | [Metrics Definition](docs/metrics_definition.md) | [Paper Dissections](docs/papers/) | [Korean README](README.ko.md)
-
-</div>
-
----
-
-## Table of Contents
-- [Overview](#overview)
-- [Repository Status](#repository-status)
-- [Highlights](#highlights)
-- [System Constraints (Important)](#system-constraints-important)
-- [Hardware and Roles](#hardware-and-roles)
-- [Sensor Data Schema](#sensor-data-schema)
-- [Packet Format](#packet-format)
-- [LoRa PHY Profiles (ADR-CODE)](#lora-phy-profiles-adr-code)
-- [AUX-less ToA Estimation Policy](#aux-less-toa-estimation-policy)
-- [Compression / Reconstruction Model (BAM-family)](#compression--reconstruction-model-bam-family)
-- [Experiment Methodology](#experiment-methodology)
-- [Metrics and Target KPIs](#metrics-and-target-kpis)
-- [Reproducibility](#reproducibility)
-- [Documentation Map](#documentation-map)
-- [Project Structure](#project-structure)
-- [Roadmap](#roadmap)
-- [License](#license)
-- [Citation](#citation)
-- [Acknowledgements](#acknowledgements)
-
----
-
-## Overview
-This project builds an **IoT-ready LoRa communication pipeline** where **multi-dimensional time-series sensor windows** are **lossily compressed** into a compact latent payload and then **reconstructed** on the receiver. The system is designed to operate in **low-power, high-loss / interference** regimes and to be evaluated with network-level metrics (**PDR/ETX**) and energy metrics (**power/energy**), alongside reconstruction fidelity (**MAE/MSE**).
-
-**What this is (strictly):**
-- A **payload reduction** + **information-preserving** transmission architecture over LoRa
-- A **measurement-driven** experiment plan centered on the **PDR approx 50% (C50)** regime
-- A **BAM-family** ML compression/reconstruction stack (multi-layer extensions to handle multi-pattern complexity)
-
-**What this is not:**
-- A new LoRa PHY or MAC redesign
-- A security/encryption protocol proposal (you can add this later, but it is not the core thesis here)
-
----
-
-## Repository Status
-This repository contains design docs plus a **Python runtime scaffold** (`loralink_mllc`) with mock radio support and CLI entry points. Hardware UART integration is a placeholder and requires E22 UART configuration and wiring. Sample RunSpec and artifacts manifest files are not included; provide your own under `configs/` or another path.
-
----
-
-## Highlights
-- **UART-based LoRa (E22-900T22S / SX1262 core)** on Raspberry Pi endpoints
-- **Fixed packet layout** at the application layer: `LEN(1B) | SEQ(1B) | PAYLOAD(var)`
-- **AUX-less ToA limitation handled explicitly:** if AUX is unavailable, ToA is **estimated** and used for guard timing
-- **Sensor payload is multi-modal, 12D:** GPS + IMU + Attitude
-- **Experiment-first plan:** find **C50**, collect over-the-air (OTA) data there, then train and validate
-
----
-
-## System Constraints (Important)
-> **AUX pin note:** The E22 module supports an AUX pin, but the current HAT/board may not expose it; verify wiring. If AUX is not available, rely on timeouts based on ToA estimation and guard time.
-
-> **Payload drives reliability:** The core hypothesis is that **smaller payload -> shorter airtime -> higher PDR** under loss/interference. Therefore, the compression system must reduce bytes without discarding critical information.
-
----
-
-## Hardware and Roles
-| Component | Model / Spec | Role |
-|---|---|---|
-| Compute and Control | Raspberry Pi (TX + RX) | Sensor ingest / windowing / compress and reconstruct / UART handling / logging / evaluation |
-| LoRa Module | E22-900T22S x2 (SX1262 core) | Long-range, low-power wireless transport via UART |
-| Status | Breadboard + LED | Power / TX / RX status indication |
-
-**Deployment shape:** 1 transmitter (TX) + 1 receiver (RX), both Raspberry Pi + E22 module.
-
----
-
-## Sensor Data Schema
-The payload content (before compression) is a **multi-dimensional time-series sensor window**.
-
-**Base fields (12D):**
-- **GPS (3):** latitude, longitude, altitude
-- **Accelerometer (3):** ax, ay, az
-- **Gyroscope (3):** gx, gy, gz
-- **Attitude (3):** roll, pitch, yaw
-
-**Windowing (project decision):**
-- Define a window length `W` and stride `S`
-- Flatten or pack as a `W x 12` vector or structured tensor depending on model implementation
-- Maintain a stable normalization policy (document in `docs/metrics_definition.md` and artifacts)
-
----
-
-## Packet Format
-This project distinguishes:
-1) **LoRa PHY framing** (preamble/header/CRC handled by radio)
-2) **E22 module internal header** (Address/Channel, module-layer)
-3) **Application-level payload layout** (this project)
-
-### 1) LoRa PHY (conceptual)
-`Preamble + PHY Header + Payload + CRC`
-
-### 2) E22 module control header (conceptual)
-`Address + Channel` (module-managed)
-
-### 3) Application-level frame (project-defined)
-`LEN (1B) | SEQ (1B) | PAYLOAD (LEN bytes)`
-
-- `LEN`: payload byte length (0..255 by spec)
-- `SEQ`: monotonically increasing sequence number (0..255 wrapping)
-- `PAYLOAD`: compressed latent representation or RAW window bytes
-
-**E22 UART constraint (P2P mode):** TX packet length <= 240 bytes. With a 2-byte app header, `LEN <= 238` and `(2 + LEN) <= 240`.
-
-**ACK rule:** ACK payload is exactly 1 byte `ACK_SEQ` (echoed uplink `SEQ`). ACK frames use the same outer format with `LEN=1`; the ACK frame `SEQ` may increment independently.
-
-> Full details (including recommended field semantics and logging schema):
-> [`docs/protocol_packet_format.md`](docs/protocol_packet_format.md)
-
----
-
-## LoRa PHY Profiles (ADR-CODE)
-Because ToA cannot be measured directly (AUX-less), PHY parameters are treated as **derived/estimated profiles** using LoRa calculator reverse-derivation.
-
-**Parameter table (derived reference):**
-
-| ADR-CODE | Manual Speed | Estimated SF/BW/CR | Symbol Time | Real Data Rate |
-|---:|---:|---:|---:|---:|
-| 000 | 0.3 kbps | SF12 / 125 / 4/5 | 32.77 ms | 293 bps |
-| 001 | 1.2 kbps | SF10 / 250 / 4/8 | 4.10 ms | 1.2 kbps |
-| 010 | 2.4 kbps | SF10 / 500 / 4/8 | 2.05 ms | 2.4 kbps |
-| 011 | 4.8 kbps | SF9 / 500 / 4/7 | 1.23 ms | 5.0 kbps |
-| 100 | 9.6 kbps | SF5 / 125 / 4/8 | 0.26 ms | 9.7 kbps |
-| 101 | 19.2 kbps | SF5 / 250 / 4/8 | 0.13 ms | 19.5 kbps |
-| 110 | 38.4 kbps | SF5 / 500 / 4/8 | 0.06 ms | 39 kbps |
-| 111 | 62.5 kbps | SF5 / 500 / 4/5 | 0.06 ms | 62.5 kbps |
-
-> Full usage rules (how to select profiles, log them, and keep the calculator assumptions consistent):
-> [`docs/phy_profiles_adr_code.md`](docs/phy_profiles_adr_code.md)
-
----
-
-## AUX-less ToA Estimation Policy
-**Problem:** The E22 module supports an AUX pin, but the current HAT/board may not expose it. Without AUX, you cannot measure TX completion signal transitions directly.
-
-**Policy (project rule):**
-- Use a LoRa calculator to estimate ToA based on:
-  - SF / BW / CR
-  - payload length (bytes)
-  - header/CRC assumptions
-- Treat the result as **approximate** and use it consistently:
-  - for reporting
-  - for profile comparisons
-  - for parameter selection
-- Do not claim sub-millisecond accuracy from ToA estimates.
-
-> Documented assumptions and calculator configuration:
-> [`docs/toa_estimation.md`](docs/toa_estimation.md)
-
----
-
-## Compression / Reconstruction Model (BAM-family)
-This project adopts **BAM-family** lossy compression/reconstruction due to:
-- strong restoration capability under corrupted cues (associative recall framing)
-- high neuron/resource efficiency under constrained architectures
-- multi-pattern weakness in base BAM addressed via **multi-layer** variants (FEBAM / MF-BAM-style structures)
-
-### Core operational principle
-- Learn complex sensor patterns and encode them into a **low-dimensional latent** vector
-- Transmit latent vector as payload
-- Reconstruct original sensor window at the receiver with bounded reconstruction error
-
-### Implementation stance (project-defined)
-- **TX path:** `sensor window -> encode(latent) -> packetize -> UART -> LoRa`
-- **RX path:** `LoRa -> UART -> latent -> decode(reconstruct) -> logging/metrics`
-
-### Relevant design docs (paper dissections)
-- LLN lossy compression + BAM motivation: `docs/papers/02_paper_dissect__bam_lln_lossy_compression.md`
-- Kosko BAM fundamentals: `docs/papers/03_paper_dissect__kosko-bam.md`
-- FEBAM (feature extracting BAM): `docs/papers/04_paper_dissect__febam.md`
-- MF-BAM (multi-feature layers): `docs/papers/05_paper_dissect__mf-bam.md`
-
-> Note: This README intentionally keeps model math minimal. The full why/how lives in the docs above.
-
----
-
-## Experiment Methodology
-The experiment plan is intentionally **measurement-driven** and focuses on a regime where improvements are easiest to attribute and quantify.
-
-### Phase 0 - Find a C50 operating point (PDR approx 50%)
-1) Sweep PHY profiles / environmental interference factors
-2) Identify the region where baseline PDR stabilizes around approx 50%
-3) Lock the environment and configuration (be strict)
-
-### Phase 1 - Collect OTA data at C50
-- Send uncompressed or lightly formatted sensor windows (baseline)
-- Log:
-  - TX sequence numbers, timestamps
-  - RX receptions, gaps, RSSI/SNR if available
-  - payload sizes
-  - energy readings (if instrumented)
-
-### Phase 2 - Train compression model, then validate OTA impact
-- Train encoder/decoder on collected sensor windows
-- Re-run OTA transmission in the **same C50 conditions**
-- Compare:
-  - payload bytes reduced
-  - PDR, ETX, power
-  - reconstruction fidelity (MAE/MSE)
-
-> Full experiment design table (fixed conditions, sweeps, and acceptance rules):
-> [`docs/01_design_doc_experiment_plan.md`](docs/01_design_doc_experiment_plan.md)
-
----
-
-## Metrics and Target KPIs
-This project evaluates both **network behavior** and **information preservation**.
-
-### Primary metrics
-- **PDR (Packet Delivery Ratio)** - higher is better
-- **ETX (Expected Transmission Count)** - lower is better
-- **Power / Energy per delivered information unit** - lower is better
-- **Reconstruction error (MAE/MSE)** - lower is better
-
-Target KPIs are defined per experiment run and recorded alongside metrics computations.
-
-> Exact definitions, computation rules, and logging schema:
-> [`docs/metrics_definition.md`](docs/metrics_definition.md)
-
----
-
-## Reproducibility
-This repository is organized so that a reviewer can reproduce:
-1) PHY profile configuration (ADR-CODE)
-2) packet format
-3) the C50 search procedure
-4) data collection + training + OTA validation
-5) metric computation
-
-**Repro checklist**
-- [ ] Hardware wired and UART enabled on both Raspberry Pis
-- [ ] E22 modules configured with the same channel/address rules
-- [ ] ADR-CODE profile selected and logged
-- [ ] Packet format matches `LEN|SEQ|PAYLOAD`
-- [ ] Runs captured with RunSpec, artifacts manifest, and logs
-- [ ] Phase 0/1/2 executed in order with fixed conditions
-- [ ] PDR/ETX/Power/MAE/MSE computed from logs with documented scripts
-
-> Step-by-step procedure (single source of truth):
-> [`docs/reproducibility.md`](docs/reproducibility.md)
-
----
-
-## Documentation Map
-Use README as a **hub**; deep content lives in `docs/`.
-
-### Core docs
-- **Design Doc (Experiment Plan):** `docs/01_design_doc_experiment_plan.md`
-- **Packet Format:** `docs/protocol_packet_format.md`
-- **Radio Constraints (E22 UART):** `docs/radio_constraints_e22.md`
-- **ToA Estimation (AUX-less):** `docs/toa_estimation.md`
-- **ADR-CODE PHY Profiles:** `docs/phy_profiles_adr_code.md`
-- **Metrics Definition:** `docs/metrics_definition.md`
-- **Reproducibility:** `docs/reproducibility.md`
-- **Paper Dissections:** `docs/papers/`
-
-### Paper dissections (file names)
-- `docs/papers/02_paper_dissect__bam_lln_lossy_compression.md`
-- `docs/papers/03_paper_dissect__kosko-bam.md`
-- `docs/papers/04_paper_dissect__febam.md`
-- `docs/papers/05_paper_dissect__mf-bam.md`
-
----
-
-## Project Structure
+LPWA 환경의 LoRa/LoRaWAN 통신에서 시계열 데이터를 수집하고, ML 기반 예측·최적화로 통신 품질·신뢰성 개선을 검증하는 MVP를 목표로 하는 실험 런타임이다.
+
+Quick Links: [빠른 시작](#빠른-시작-mock) · [START_HERE.md](START_HERE.md) · [docs/01_design_doc_experiment_plan.md](docs/01_design_doc_experiment_plan.md) · [docs/sensing_pipeline.md](docs/sensing_pipeline.md) · [docs/runbook_uart_sensing.md](docs/runbook_uart_sensing.md) · [docs/phase2_bam_training.md](docs/phase2_bam_training.md) · [docs/phase3_on_air_validation.md](docs/phase3_on_air_validation.md) · [docs/phase4_energy_evaluation.md](docs/phase4_energy_evaluation.md)
+
+## 개요
+- Goal: LPWA/LoRa/LoRaWAN 통신을 이해하고, 현장 시계열 데이터를 기반으로 지연율·패킷 손실률·신호 세기 등의 성능 지표를 측정하며, ML 기반 예측·최적화로 손실 복원과 네트워크 안정성 향상을 검증한 MVP를 제시한다.
+- Problem: AUX 없는 E22 UART 환경에서 ToA를 추정해야 하며, payload 크기 변화가 PDR/ETX와 재구성 오차에 미치는 영향을 비교해야 한다.
+- Solution: `LEN|SEQ|PAYLOAD` 프레임과 RunSpec 기반 설정, JSONL 로깅, payload 기반 코덱 실험으로 Phase 0/1 mock 실험과 metrics 계산을 수행한다.
+- Scope: Python 런타임, LoRa P2P UART(mock 포함), JSONL/CSV 센서 입력, BAM inference artifacts 로딩을 포함한다.
+- Non-goals: 모듈 설정/AT 제어는 제공하지 않는다; Waveshare SX1262 LoRa HAT은 AT UART만 접근 가능하며 Air Speed 프리셋만 설정한다; BAM 학습은 baseline 스크립트를 제공하지만 고급 튜닝/모델 선택 자동화는 범위 밖이다; 전력 측정 자동화와 실 센서 드라이버는 포함하지 않는다; mock 링크는 단일 프로세스 내 연결만 가정한다.
+
+## TODO (미구현)
+- LoRaWAN 지원 범위 정의 및 구현(클래스/지역/주파수 등).
+- 지연율 지표 정의 및 측정 경로 정리(ACK RTT vs E2E).
+- RSSI/SNR 수집 경로 구현(AT 응답 파싱 포함).
+- ML 기반 지연·손실 예측/최적화 및 손실 복원 로직 구현.
+- Air Speed 프리셋 ↔ air data rate 매핑은 문서화했으나, SF/BW/CR 매핑의 벤더 확인은 TODO.
+- 배포 패키징/릴리스 파이프라인 정의 및 구현.
+
+## 주요 기능
+- 제공: RunSpec YAML/JSON 로딩·검증 및 `max_payload_bytes` 제약 적용.
+- 제공: `LEN|SEQ|PAYLOAD` 프레이밍과 엄격한 파서 오류 타입.
+- 지원: RAW, zlib, BAM inference 코덱과 payload schema hash.
+- 제공: TX/RX 노드의 ACK/재시도, ToA 추정 게이팅, JSONL 로깅.
+- 제공: mock 링크(손실/지연/패턴)와 Phase 0/1 실험 runner.
+- 제공: JSONL/CSV 센서 샘플러와 `dataset_raw.jsonl` 기록.
+- 제한: UART 전송은 최소 transport만 포함하며 모듈 설정은 외부에서 처리한다.
+
+## 빠른 시작 (Mock)
+
+### Prerequisites
+- Python 3.11 (pyproject.toml 기준)
+- 하드웨어 필요 없음 (mock 링크 사용)
+
+### Install
+```bash
+python -m pip install -e .
 ```
-.
-|-- README.md
-|-- README.ko.md
-|-- docs/
-|   |-- 01_design_doc_experiment_plan.md
-|   |-- protocol_packet_format.md
-|   |-- toa_estimation.md
-|   |-- phy_profiles_adr_code.md
-|   |-- metrics_definition.md
-|   |-- reproducibility.md
-|   |-- radio_constraints_e22.md
-|   `-- papers/
-|       |-- 02_paper_dissect__bam_lln_lossy_compression.md
-|       |-- 03_paper_dissect__kosko-bam.md
-|       |-- 04_paper_dissect__febam.md
-|       `-- 05_paper_dissect__mf-bam.md
-|-- configs/
-|-- loralink_mllc/
-|-- scripts/
-|-- src/
-|-- tests/
-`-- pyproject.toml
+- 기대 결과: `python -m loralink_mllc.cli --help`가 동작한다.
+- 흔한 오류: `requires-python` 오류가 나면 Python 3.11 환경에서 다시 설치한다.
+
+### Run
+```bash
+python -m loralink_mllc.cli phase0 --sweep configs/examples/sweep.json --out out/c50.json
+python -m loralink_mllc.cli phase1 --c50 out/c50.json --raw configs/examples/raw.json --latent configs/examples/latent.json --out out/report.json
+```
+- 기대 결과: `out/c50.json`, `out/report.json`, `out/phase0/`, `out/phase1/`가 생성된다.
+- 흔한 오류: `FileNotFoundError: configs/examples/...`가 나면 repo root에서 실행한다.
+
+### Verify
+```bash
+python -m loralink_mllc.cli metrics --log out/phase1/*_tx.jsonl --out out/phase1/metrics.json
+```
+- 기대 결과: `out/phase1/metrics.json`이 생성된다.
+- 흔한 오류: 로그 파일이 없으면 Run 단계를 먼저 완료한다.
+
+## 사용 예
+
+### UART RAW 송수신 (실장비)
+UART 전송은 최소 transport만 제공하며 모듈 설정은 외부에서 완료해야 한다. `pyserial`이 필요하다.
+```bash
+python -m pip install -e .[uart]
+
+python -m loralink_mllc.cli rx \
+  --runspec configs/examples/rx_raw.yaml \
+  --manifest configs/examples/artifacts.json \
+  --radio uart \
+  --uart-port COM4 \
+  --uart-baud 9600
+
+python -m loralink_mllc.cli tx \
+  --runspec configs/examples/tx_raw.yaml \
+  --manifest configs/examples/artifacts.json \
+  --radio uart \
+  --uart-port COM3 \
+  --uart-baud 9600
+```
+- 기대 결과: RX 로그에 `rx_ok`, TX 로그에 `ack_received`가 기록된다.
+
+### JSONL 센서 입력 + dataset 기록
+JSONL 스키마는 `docs/sensing_pipeline.md`에 정의돼 있다.
+```bash
+python -m loralink_mllc.cli tx \
+  --runspec configs/examples/tx_raw.yaml \
+  --manifest configs/examples/artifacts.json \
+  --sampler jsonl \
+  --sensor-path configs/examples/sensor_sample.jsonl \
+  --dataset-out out/dataset_raw.jsonl \
+  --radio mock
+```
+- 기대 결과: `out/dataset_raw.jsonl`이 생성된다.
+
+## 설정
+RunSpec 스키마는 `loralink_mllc/config/runspec.py`에 정의돼 있다. 환경변수는 현재 사용하지 않는다.
+
+| 이름 | 기본값 | 필수 여부 | 설명 | 예시 |
+| --- | --- | --- | --- | --- |
+| run_id | 없음 | 필수 | 런 식별자 | example_raw |
+| role | 없음 | 필수 | tx 또는 rx | tx |
+| mode | 없음 | 필수 | RAW 또는 LATENT | RAW |
+| codec.id | 없음 | 필수 | 코덱 선택 | raw |
+| window.dims | 12 | 선택 | 센서 차원 수 | 12 |
+| window.W | 없음 | 필수 | 윈도우 길이 | 1 |
+| window.stride | 1 | 선택 | 윈도우 stride | 1 |
+| tx.ack_timeout_ms | 없음 | 필수 | ACK 타임아웃 | 10 |
+| tx.max_retries | 없음 | 필수 | 최대 재시도 | 0 |
+| max_payload_bytes | 238 | 선택 | payload 상한 | 238 |
+| artifacts_manifest | 없음 | 선택 | artifacts manifest 경로 | configs/examples/artifacts.json |
+
+설정 파일 위치:
+- `configs/examples/tx_raw.yaml`, `configs/examples/rx_raw.yaml`
+- `configs/examples/tx_latent.yaml`, `configs/examples/rx_latent.yaml`
+- `configs/examples/tx_bam.yaml`, `configs/examples/rx_bam.yaml`
+- `configs/examples/artifacts.json`, `configs/examples/artifacts_zlib.json`, `configs/examples/artifacts_bam.json`
+- `configs/examples/bam_manifest.json`
+- `configs/examples/phy_profiles.yaml`
+
+## 아키텍처
+```mermaid
+flowchart LR
+  subgraph TX[TX node]
+    Sensor[Sensor window] --> Encode[Codec: RAW | Zlib | BAM]
+    Encode --> Packetize[Packetize LEN|SEQ|PAYLOAD]
+    Packetize --> UART_TX[UART -> E22]
+    UART_TX --> LogTX[JSONL log]
+  end
+
+  UART_TX --> Air[LoRa air link]
+
+  subgraph RX[RX node]
+    Air --> UART_RX[UART <- E22]
+    UART_RX --> Parse[Parse frame]
+    Parse --> Decode[Decode / reconstruct]
+    Decode --> LogRX[JSONL log]
+  end
+
+  subgraph Offline[Offline training loop]
+    Data[OTA dataset] --> Train[Train BAM-family model]
+    Train --> Artifacts[Artifacts: model + norm + schema]
+  end
+
+  Artifacts -.-> Encode
+  Artifacts -.-> Decode
+```
+- TX는 샘플러에서 윈도우를 만들고 코덱으로 payload를 만든다.
+- 프레임은 `LEN|SEQ|PAYLOAD`로 고정되며 `max_payload_bytes`를 넘지 않는다.
+- RX는 프레임을 파싱하고 LATENT 모드에서만 복원을 시도한다.
+- ToA는 AUX 없이 추정되며 TX 게이팅에 사용된다.
+- BAM 학습은 Phase 2 오프라인 스크립트로 baseline 워크플로를 제공하며, 생성된 artifacts를 런타임에서 로딩한다.
+
+## 개발
+```bash
+python -m pip install -e .[dev]
+python -m pytest
+ruff check .
+```
+UART/BAM 옵션은 필요 시 설치한다.
+```bash
+python -m pip install -e .[uart]
+python -m pip install -e .[bam]
+python -m pip install -e .[viz]
 ```
 
----
+Phase 3/4 결과 플롯(선택):
+```bash
+python scripts/plot_phase_results.py --phase3 out/phase3/report_all.json --out-dir out/plots --plots
+```
 
-## Roadmap
-- [ ] Finalize packet payload schema for latent + minimal metadata
-- [ ] Implement logging schema + deterministic metric computation
-- [ ] Phase 0: C50 search automation with profile sweep
-- [ ] Phase 1: OTA dataset collection at C50
-- [ ] Phase 2: Train BAM-family compression model (offline)
-- [ ] Phase 3: OTA validation with compressed payload
-- [ ] Publish final report: experiment matrix + results + discussion
-
----
-
-## License
-License is not specified yet. Add a `LICENSE` file to define terms.
-
----
-
-## Citation
-Cite the repository URL and a commit hash (or release tag) in your preferred format.
-
----
-
-## Acknowledgements
-This project compression model and design rationale are informed by BAM-family literature (BAM / FEBAM / MF-BAM) and LLN lossy compression framing. See the `docs/papers/` dissections for the project-aligned teardown of those references.
-
----
-
+## 문서와 정책
 <details>
-<summary><strong>Troubleshooting (keep README clean; expand only when needed)</strong></summary>
+<summary>문서 지도</summary>
 
-### UART sanity checks
-- Confirm UART is enabled and the correct device node is used.
-- Verify baud rate and serial framing match the E22 configuration.
-
-### Packet loss vs parsing errors
-- Distinguish between:
-  - CRC-failed frames (never delivered to application)
-  - delivered frames with malformed payload (application-level parsing)
-- Always log `SEQ` gaps to separate link loss from application decode failure
-
-### ToA estimation caveat
-- ToA is approximate under AUX-less policy.
-- Do not interpret ToA-derived numbers as ground truth; use them as consistent approximations.
-
+- `START_HERE.md`: CLI 시작 가이드
+- `docs/01_design_doc_experiment_plan.md`: 실험 설계 및 로그 스키마
+- `docs/protocol_packet_format.md`: `LEN|SEQ|PAYLOAD` 규격
+- `docs/radio_constraints_e22.md`: E22 UART 제약 및 HAT 인터페이스 한계
+- `docs/toa_estimation.md`: ToA 추정 공식
+- `docs/sensing_pipeline.md`: 센서 입력 스키마
+- `docs/phase2_bam_training.md`: BAM 학습 산출물 계약
+- `docs/phase3_on_air_validation.md`: Phase 3 on-air 검증 런북
+- `docs/phase4_energy_evaluation.md`: Phase 4 에너지 평가 런북
+- `docs/review_checklist.md`: 목표 정합성/전면 검토 체크리스트
 </details>
 
----
+- Contributing: TODO(확인 필요, 파일 없음)
+- Security: TODO(확인 필요, 파일 없음)
+- License: TODO(확인 필요, `LICENSE_TODO.md` 참고)
 
-## LoRaLink-MLLC Runtime Usage (Requires Config Files)
-Install dependencies:
-```
-python -m pip install -e .[dev]
-```
-
-Phase 0 (C50 sweep):
-```
-python -m loralink_mllc.cli phase0 --sweep configs/sweep.json --out out/c50.json
-```
-
-Phase 1 (A/B at C50):
-```
-python -m loralink_mllc.cli phase1 --c50 out/c50.json --raw configs/raw.json --latent configs/latent.json --out out/report.json
-```
-
-TX/RX (mock radio by default):
-```
-python -m loralink_mllc.cli tx --runspec configs/tx.json --manifest configs/artifacts.json
-python -m loralink_mllc.cli rx --runspec configs/rx.json --manifest configs/artifacts.json
-```
-
-Note: config files are not included in the repo; provide your own RunSpec and artifacts manifest.
+## 용어 표준화
+| 영문 용어 | 한국어 표기/설명 |
+| --- | --- |
+| RunSpec | 실행 설정 파일(YAML/JSON) |
+| Artifacts Manifest | artifacts manifest(코덱 메타데이터 JSON) |
+| payload_bytes | payload_bytes(`LEN`) |
+| ToA | Time-on-Air(ToA) |
+| PDR | Packet Delivery Ratio(PDR) |
+| ETX | Expected Transmission Count(ETX) |
+| RAW/LATENT | RAW/LATENT 모드 |
+| BAM | BAM(코덱/모델 이름) |
+| LPWA | LPWA(Low Power Wide Area) |
+| LoRaWAN | LoRaWAN(표준 MAC/네트워크 계층) |

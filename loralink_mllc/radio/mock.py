@@ -3,7 +3,7 @@ from __future__ import annotations
 import heapq
 import random
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List
 
 from loralink_mllc.radio.base import IRadio
 from loralink_mllc.runtime.scheduler import Clock, RealClock
@@ -70,7 +70,10 @@ class MockLink:
     def _recv(self, receiver: str, timeout_ms: int) -> bytes | None:
         deadline = self._clock.now_ms() + max(0, timeout_ms)
         while True:
-            if self._queues[receiver] and self._queues[receiver][0].deliver_at_ms <= self._clock.now_ms():
+            if (
+                self._queues[receiver]
+                and self._queues[receiver][0].deliver_at_ms <= self._clock.now_ms()
+            ):
                 delivery = heapq.heappop(self._queues[receiver])
                 return delivery.frame
             if timeout_ms <= 0:

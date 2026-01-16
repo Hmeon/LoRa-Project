@@ -1,0 +1,74 @@
+# Phase 0 C50 record template (fill with real values after field search).
+run_id: "phase0_field_adr000_raw"
+phase: phase0
+mode: RAW
+adr_code: "000"
+adr_code_range: "000-010"
+payload_bytes: 32
+phy_id: adr_000
+phy:
+  # Derived from Air Speed preset table when using AT-only hardware.
+  sf: 12
+  bw_hz: 125000
+  cr: 5
+  real_datarate_bps: 300
+  preamble: 8
+  crc_on: false
+  explicit_header: true
+  ldro: true
+  tx_power_dbm: 22
+environment:
+  distance_m: 2000
+  distance_m_max: 2600
+  line_of_sight: nlos
+  obstacles: NLOS
+  antenna: "10 dBi"
+  antenna_gain_dbi: 10
+  orientation: TBD
+  notes: "Measured at 2.0-2.6 km NLOS with 10 dBi antenna gain"
+uart:
+  tx_port: /dev/ttyAMA2
+  rx_port: /dev/ttyAMA0
+  baud: 9600
+  parity: N
+  stop_bits: 1
+  flow_control: none
+  channel: 0x32
+  address: 0x0000
+  netid: 0x00
+  # Waveshare SX1262 LoRa HAT only exposes Air Speed presets via AT UART.
+  air_speed_preset: 0
+  air_speed_preset_range: "0-2"
+  crc_on: false
+  header_mode: explicit
+  preamble: 8
+  ldro: on
+  module_payload_length_bytes: 7
+runspecs:
+  tx: configs/examples/tx_raw.yaml
+  rx: configs/examples/rx_raw.yaml
+  manifest: configs/examples/artifacts.json
+logs:
+  tx_log: out/runtime/<run_id>_tx.jsonl
+  rx_log: out/runtime/<run_id>_rx.jsonl
+  metrics: out/phase0/metrics_<run_id>.json
+results:
+  c50_found: false
+  target_pdr: 0.50
+  tx_sent: TBD
+  rx_ok: TBD
+  ack_received: TBD
+  pdr: TBD
+  payload_variants:
+    - payload_bytes: 32
+      pdr: 0.10
+    - payload_bytes: 16
+      pdr: 0.32
+    - payload_bytes: 8
+      pdr: 0.35
+  best_payload_bytes: 8
+  best_pdr: 0.35
+  rssi_dbm_min: -104
+  rssi_dbm_max: -101
+notes: "C50 not reached; preliminary PDR sweep recorded for RAW payload sizes. RSSI avg range -104 to -101 dBm."
+

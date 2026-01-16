@@ -1,0 +1,14 @@
+{
+  "manifest_version": "1",
+  "model_format": "layer_npz_v1",
+  "model_path": ".",
+  "latent_dim": 2,
+  "packing": "float32",
+  "scale": null,
+  "delta": null,
+  "input_dims": 12,
+  "window_W": 1,
+  "window_stride": 1,
+  "norm_path": "norm.json",
+  "notes": null
+}

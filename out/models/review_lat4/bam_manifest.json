@@ -1,0 +1,19 @@
+{
+  "manifest_version": "1",
+  "model_format": "layer_npz_v1",
+  "model_path": ".",
+  "latent_dim": 4,
+  "packing": "int16",
+  "scale": 32767.0,
+  "delta": null,
+  "input_dims": 12,
+  "window_W": 1,
+  "window_stride": 1,
+  "norm_path": "norm.json",
+  "notes": null,
+  "train_split": {
+    "method": "hash_window_id",
+    "train_ratio": 0.8,
+    "split_seed": 0
+  }
+}

@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict
 
+from loralink_mllc.codecs.bam_artifacts import BamArtifacts
 from loralink_mllc.codecs.base import ICodec, payload_schema_hash
 from loralink_mllc.config.runspec import RunSpec
 
@@ -108,10 +109,25 @@ def verify_manifest(runspec: RunSpec, manifest: ArtifactsManifest, codec: ICodec
     schema_hash = payload_schema_hash(codec.payload_schema())
     if manifest.payload_schema_hash != schema_hash:
         raise ValueError("manifest payload_schema_hash does not match codec schema")
-    norm_path = runspec.codec.params.get("norm_path") if runspec.codec.params else None
-    if manifest.norm_params_hash and norm_path:
-        actual = hash_file(norm_path)
-        if actual != manifest.norm_params_hash:
-            raise ValueError("norm_params_hash does not match norm file")
+    if not manifest.norm_params_hash:
+        return
+
+    if runspec.codec.id == "bam":
+        manifest_path = runspec.codec.params.get("manifest_path")
+        if not manifest_path:
+            raise ValueError("bam runspec missing codec.params.manifest_path")
+        artifacts = BamArtifacts.load(manifest_path)
+        if not artifacts.norm_path:
+            raise ValueError("manifest includes norm_params_hash but bam_manifest has no norm_path")
+        norm_path = (Path(manifest_path).parent / artifacts.norm_path).resolve()
+    else:
+        norm_path = runspec.codec.params.get("norm_path")
+        if not norm_path:
+            raise ValueError("manifest includes norm_params_hash but runspec has no norm_path")
+        norm_path = Path(norm_path)
+
+    actual = hash_file(norm_path)
+    if actual != manifest.norm_params_hash:
+        raise ValueError("norm_params_hash does not match norm file")
 
 

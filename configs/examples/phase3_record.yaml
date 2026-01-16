@@ -1,0 +1,23 @@
+# Phase 3 on-air validation record template (fill after running baseline + variants at C50).
+record_id: "phase3_YYYYMMDD_001"
+phase: phase3
+c50:
+  record_path: configs/examples/c50_record.yaml
+uart:
+  record_path: configs/examples/uart_record.yaml
+baseline:
+  run_id: TBD
+  mode: RAW
+variants:
+  - run_id: TBD
+    mode: LATENT
+    notes: TBD
+artifacts:
+  baseline_manifest: TBD
+  variant_manifests:
+    - TBD
+results:
+  reports:
+    - out/phase3/report_TBD.json
+  notes: TBD
+

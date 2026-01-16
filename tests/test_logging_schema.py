@@ -47,11 +47,14 @@ def test_jsonl_logging_schema(tmp_path: Path) -> None:
         spec.run_id,
         spec.role,
         spec.mode,
-        spec.phy_profile_id(),
+        spec.phy_id(),
         clock=clock,
     )
     logger.log_run_start(spec, manifest)
-    logger.log_event("tx_sent", {"seq": 1, "payload_len": 2, "toa_ms_est": 5.0, "attempt": 1})
+    logger.log_event(
+        "tx_sent",
+        {"seq": 1, "payload_bytes": 2, "toa_ms_est": 5.0, "guard_ms": 0, "attempt": 1},
+    )
     logger.log_event("ack_received", {"ack_seq": 1, "rtt_ms": 5})
     logger.close()
 
@@ -60,7 +63,7 @@ def test_jsonl_logging_schema(tmp_path: Path) -> None:
     assert len(lines) == 3
     for line in lines:
         event = json.loads(line)
-        for field in ("ts_ms", "run_id", "event", "role", "mode", "phy_profile_id"):
+        for field in ("ts_ms", "run_id", "event", "role", "mode", "phy_id"):
             assert field in event
 
 

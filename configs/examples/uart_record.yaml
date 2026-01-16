@@ -1,0 +1,35 @@
+# UART configuration record template (fill with real values before field runs).
+record_id: "uart_YYYYMMDD_001"
+module:
+  vendor: ebyte
+  model: E22-900T22S
+  chipset: SX1262
+role:
+  tx_label: TX_NODE_A
+  rx_label: RX_NODE_B
+uart:
+  tx_port: /dev/ttyAMA2
+  rx_port: /dev/ttyAMA0
+  baud: 9600
+  parity: N
+  stop_bits: 1
+  flow_control: none
+e22_p2p:
+  channel: 0x32
+  address: 0x0000
+  netid: 0x00
+  # Waveshare SX1262 LoRa HAT: SF/BW/CR are derived from the AT Air Speed preset table.
+  air_speed_preset: 0
+  air_speed_preset_range: "0-2"
+  air_data_rate: "0.3 kbps"
+  sf: 12
+  bw_hz: 125000
+  cr: "4/5"
+  adr_code_range: "000-010"
+  crc_on: false
+  header_mode: explicit
+  preamble: 8
+  ldro: on
+  module_payload_length_bytes: 7
+  tx_power_dbm: 22
+notes: "Field runs use ADR-CODE 000-010 and 10 dBi antennas; NLOS 2.0-2.6 km."

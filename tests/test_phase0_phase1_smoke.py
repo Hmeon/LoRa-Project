@@ -8,7 +8,7 @@ from loralink_mllc.experiments.phase1_ab import run_ab
 def test_phase0_phase1_smoke(tmp_path: Path) -> None:
     base_runspec = {
         "run_id": "smoke",
-        "role": "controller",
+        "role": "tx",
         "mode": "RAW",
         "phy": {
             "sf": 7,

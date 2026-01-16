@@ -2,15 +2,16 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass
-from typing import Deque, Dict, Iterable, List, Protocol, Sequence
+from typing import Deque, Dict, List, Protocol, Sequence
 
 from loralink_mllc.codecs import ICodec
 from loralink_mllc.config.runspec import RunSpec
 from loralink_mllc.protocol.packet import Packet, PacketError
+from loralink_mllc.radio.base import IRadio, IRxRssi
 from loralink_mllc.runtime.logging import JsonlLogger
 from loralink_mllc.runtime.scheduler import Clock, RealClock, TxGate
 from loralink_mllc.runtime.toa import estimate_toa_ms
-from loralink_mllc.radio.base import IRadio
+from loralink_mllc.sensing.dataset import DatasetLogger
 
 
 class Sampler(Protocol):
@@ -30,16 +31,21 @@ class DummySampler:
 
 
 class WindowBuilder:
-    def __init__(self, dims: int, W: int) -> None:
+    def __init__(self, dims: int, W: int, stride: int) -> None:
         self._dims = dims
         self._W = W
+        self._stride = stride
         self._buffer: Deque[Sequence[float]] = deque(maxlen=W)
+        self._samples_seen = 0
 
     def feed(self, sample: Sequence[float]) -> List[float] | None:
         if len(sample) != self._dims:
             raise ValueError("sample dims do not match window dims")
         self._buffer.append(list(sample))
+        self._samples_seen += 1
         if len(self._buffer) < self._W:
+            return None
+        if (self._samples_seen - self._W) % self._stride != 0:
             return None
         window: List[float] = []
         for row in self._buffer:
@@ -56,7 +62,7 @@ class NormParams:
         if len(window) != len(self.mean) or len(window) != len(self.std):
             raise ValueError("norm params length mismatch")
         out = []
-        for value, mu, sigma in zip(window, self.mean, self.std):
+        for value, mu, sigma in zip(window, self.mean, self.std, strict=True):
             if sigma == 0:
                 out.append(0.0)
             else:
@@ -74,6 +80,12 @@ class Preprocessor:
         return self._norm.apply(window)
 
 
+@dataclass(frozen=True)
+class PendingWindow:
+    window_id: int
+    payload: bytes
+
+
 class TxNode:
     def __init__(
         self,
@@ -82,6 +94,7 @@ class TxNode:
         codec: ICodec,
         logger: JsonlLogger,
         sampler: Sampler,
+        dataset_logger: DatasetLogger | None = None,
         clock: Clock | None = None,
     ) -> None:
         self._runspec = runspec
@@ -89,6 +102,7 @@ class TxNode:
         self._codec = codec
         self._logger = logger
         self._sampler = sampler
+        self._dataset_logger = dataset_logger
         self._clock = clock or RealClock()
         self._gate = TxGate(
             clock=self._clock,
@@ -98,13 +112,15 @@ class TxNode:
             max_inflight=runspec.tx.max_inflight,
         )
         self._seq = 0
-        self._pending: Deque[bytes] = deque()
-        self._inflight_payloads: Dict[int, bytes] = {}
-        self._builder = WindowBuilder(runspec.window.dims, runspec.window.W)
+        self._max_payload_bytes = runspec.max_payload_bytes
+        self._pending: Deque[PendingWindow] = deque()
+        self._inflight_payloads: Dict[int, PendingWindow] = {}
+        self._builder = WindowBuilder(runspec.window.dims, runspec.window.W, runspec.window.stride)
         self._pre = Preprocessor()
         self._windows_generated = 0
         self._windows_sent = 0
         self._stop = False
+        self._no_more_samples = False
 
     def stop(self) -> None:
         self._stop = True
@@ -112,7 +128,9 @@ class TxNode:
     def is_done(self) -> bool:
         max_windows = self._runspec.tx.max_windows
         if max_windows is None:
-            return False
+            if not self._no_more_samples:
+                return False
+            return not self._pending and not self._gate.inflight()
         return (
             self._windows_sent >= max_windows
             and not self._pending
@@ -120,16 +138,29 @@ class TxNode:
         )
 
     def _queue_window(self) -> None:
+        if self._no_more_samples:
+            return
         max_windows = self._runspec.tx.max_windows
         if max_windows is not None and self._windows_generated >= max_windows:
             return
-        sample = self._sampler.sample()
+        try:
+            sample = self._sampler.sample()
+        except StopIteration:
+            self._no_more_samples = True
+            return
         window = self._builder.feed(sample)
         if window is None:
             return
+        window_id = self._windows_generated
+        if self._dataset_logger is not None:
+            self._dataset_logger.log_window(window_id, self._clock.now_ms(), window)
         processed = self._pre.apply(window)
         payload = self._codec.encode(processed)
-        self._pending.append(payload)
+        if len(payload) > self._max_payload_bytes:
+            raise ValueError(
+                f"payload_bytes {len(payload)} exceeds max_payload_bytes {self._max_payload_bytes}"
+            )
+        self._pending.append(PendingWindow(window_id=window_id, payload=payload))
         self._windows_generated += 1
 
     def _handle_incoming(self) -> None:
@@ -138,7 +169,7 @@ class TxNode:
             if frame is None:
                 return
             try:
-                packet = Packet.from_bytes(frame)
+                packet = Packet.from_bytes(frame, max_payload_bytes=self._max_payload_bytes)
             except PacketError as exc:
                 self._logger.log_event("rx_parse_fail", {"reason": str(exc)})
                 continue
@@ -149,7 +180,15 @@ class TxNode:
             if inflight is None:
                 continue
             rtt_ms = self._clock.now_ms() - inflight.first_tx_ms
-            self._logger.log_event("ack_received", {"ack_seq": ack_seq, "rtt_ms": rtt_ms})
+            ack_payload: dict[str, object] = {"ack_seq": ack_seq, "rtt_ms": rtt_ms}
+            window = self._inflight_payloads.get(ack_seq)
+            if window is not None:
+                ack_payload["window_id"] = window.window_id
+            if isinstance(self._radio, IRxRssi):
+                rssi_dbm = self._radio.last_rx_rssi_dbm()
+                if rssi_dbm is not None:
+                    ack_payload["rssi_dbm"] = rssi_dbm
+            self._logger.log_event("ack_received", ack_payload)
             self._inflight_payloads.pop(ack_seq, None)
 
     def _retry_expired(self) -> None:
@@ -159,28 +198,31 @@ class TxNode:
                 continue
             if not self._gate.can_send():
                 continue
-            toa_ms = estimate_toa_ms(self._runspec.phy, len(inflight_payload))
+            toa_ms = estimate_toa_ms(self._runspec.phy, len(inflight_payload.payload))
             attempt = self._gate.record_send(seq, toa_ms)
-            packet = Packet(payload=inflight_payload, seq=seq)
-            self._radio.send(packet.to_bytes())
+            packet = Packet(payload=inflight_payload.payload, seq=seq)
+            self._radio.send(packet.to_bytes(max_payload_bytes=self._max_payload_bytes))
             self._logger.log_event(
                 "tx_sent",
                 {
+                    "window_id": inflight_payload.window_id,
                     "seq": seq,
-                    "payload_len": len(inflight_payload),
+                    "payload_bytes": len(inflight_payload.payload),
                     "toa_ms_est": toa_ms,
+                    "guard_ms": self._runspec.tx.guard_ms,
                     "attempt": attempt,
                 },
             )
         for inflight in list(self._gate.expired_failures()):
-            self._logger.log_event(
-                "tx_failed",
-                {
-                    "seq": inflight.seq,
-                    "reason": "max_retries_exceeded",
-                    "attempts": inflight.attempts,
-                },
-            )
+            window = self._inflight_payloads.get(inflight.seq)
+            payload: Dict[str, object] = {
+                "seq": inflight.seq,
+                "reason": "max_retries_exceeded",
+                "attempts": inflight.attempts,
+            }
+            if window is not None:
+                payload["window_id"] = window.window_id
+            self._logger.log_event("tx_failed", payload)
             self._inflight_payloads.pop(inflight.seq, None)
 
     def _send_pending(self) -> None:
@@ -188,18 +230,25 @@ class TxNode:
             return
         if not self._gate.can_send():
             return
-        payload = self._pending.popleft()
+        window = self._pending.popleft()
         seq = self._seq
         self._seq = (self._seq + 1) % 256
-        toa_ms = estimate_toa_ms(self._runspec.phy, len(payload))
+        toa_ms = estimate_toa_ms(self._runspec.phy, len(window.payload))
         attempt = self._gate.record_send(seq, toa_ms)
-        packet = Packet(payload=payload, seq=seq)
-        self._radio.send(packet.to_bytes())
-        self._inflight_payloads[seq] = payload
+        packet = Packet(payload=window.payload, seq=seq)
+        self._radio.send(packet.to_bytes(max_payload_bytes=self._max_payload_bytes))
+        self._inflight_payloads[seq] = window
         self._windows_sent += 1
         self._logger.log_event(
             "tx_sent",
-            {"seq": seq, "payload_len": len(payload), "toa_ms_est": toa_ms, "attempt": attempt},
+            {
+                "window_id": window.window_id,
+                "seq": seq,
+                "payload_bytes": len(window.payload),
+                "toa_ms_est": toa_ms,
+                "guard_ms": self._runspec.tx.guard_ms,
+                "attempt": attempt,
+            },
         )
 
     def process_once(self) -> None:
