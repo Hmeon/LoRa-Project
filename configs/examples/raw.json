@@ -23,8 +23,8 @@
     "params": {}
   },
   "tx": {
-    "guard_ms": 0,
-    "ack_timeout_ms": 10,
+    "guard_ms": 20,
+    "ack_timeout_ms": "auto",
     "max_retries": 0,
     "max_inflight": 1,
     "max_windows": 20

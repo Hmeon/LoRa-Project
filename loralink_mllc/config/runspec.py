@@ -16,6 +16,41 @@ def _require_keys(data: Dict[str, Any], keys: Iterable[str], context: str) -> No
         raise ValueError(f"missing {context} keys: {joined}")
 
 
+def _optional_bool(value: Any) -> bool | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text in {"", "auto", "none", "null"}:
+            return None
+        if text in {"1", "true", "on", "yes"}:
+            return True
+        if text in {"0", "false", "off", "no"}:
+            return False
+    raise ValueError(f"invalid bool value: {value!r}")
+
+
+def _optional_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        raise ValueError(f"invalid int value: {value!r}")
+    if isinstance(value, int):
+        return int(value)
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text in {"", "auto", "none", "null"}:
+            return None
+        return int(text)
+    raise ValueError(f"invalid int value: {value!r}")
+
+
 @dataclass(frozen=True)
 class PhySpec:
     sf: int
@@ -25,6 +60,7 @@ class PhySpec:
     crc_on: bool
     explicit_header: bool
     tx_power_dbm: int
+    ldro: bool | None = None
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "PhySpec":
@@ -41,6 +77,7 @@ class PhySpec:
             crc_on=bool(data["crc_on"]),
             explicit_header=bool(data["explicit_header"]),
             tx_power_dbm=int(data["tx_power_dbm"]),
+            ldro=_optional_bool(data.get("ldro")),
         )
 
     def profile_id(self) -> str:
@@ -84,7 +121,7 @@ class CodecSpec:
 @dataclass(frozen=True)
 class TxSpec:
     guard_ms: int
-    ack_timeout_ms: int
+    ack_timeout_ms: int | None
     max_retries: int
     max_inflight: int = 1
     max_windows: int | None = None
@@ -92,12 +129,14 @@ class TxSpec:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "TxSpec":
         _require_keys(data, ["guard_ms", "ack_timeout_ms", "max_retries"], "tx")
+        ack_timeout_raw = data.get("ack_timeout_ms")
+        max_windows_raw = data.get("max_windows")
         return cls(
             guard_ms=int(data["guard_ms"]),
-            ack_timeout_ms=int(data["ack_timeout_ms"]),
+            ack_timeout_ms=_optional_int(ack_timeout_raw),
             max_retries=int(data["max_retries"]),
             max_inflight=int(data.get("max_inflight", 1)),
-            max_windows=(int(data["max_windows"]) if "max_windows" in data else None),
+            max_windows=(int(max_windows_raw) if max_windows_raw is not None else None),
         )
 
 
@@ -159,8 +198,10 @@ class RunSpec:
             raise ValueError("window sample_hz must be > 0")
         if self.phy.sf <= 0 or self.phy.bw_hz <= 0 or self.phy.cr <= 0:
             raise ValueError("phy values must be > 0")
-        if self.tx.guard_ms < 0 or self.tx.ack_timeout_ms <= 0:
-            raise ValueError("tx guard_ms must be >=0 and ack_timeout_ms > 0")
+        if self.tx.guard_ms < 0:
+            raise ValueError("tx guard_ms must be >=0")
+        if self.tx.ack_timeout_ms is not None and self.tx.ack_timeout_ms <= 0:
+            raise ValueError("tx ack_timeout_ms must be > 0 (or null/auto)")
         if self.tx.max_retries < 0 or self.tx.max_inflight <= 0:
             raise ValueError("tx retries/inflight must be >= 0")
         if self.max_payload_bytes <= 0 or self.max_payload_bytes > 255:
@@ -185,6 +226,7 @@ class RunSpec:
                 "crc_on": self.phy.crc_on,
                 "explicit_header": self.phy.explicit_header,
                 "tx_power_dbm": self.phy.tx_power_dbm,
+                "ldro": self.phy.ldro,
             },
             "window": {
                 "dims": self.window.dims,

@@ -19,13 +19,28 @@ If RSSI-byte output is enabled on the module (REG3 bit 7), run with `--uart-rssi
 and enable it via `scripts/e22_tool.py` (see `docs/runbook_uart_sensing.md`).
 
 ## Procedure (repeat per condition)
+Recommended fixed-size RAW baselines (naive truncation/padding of `sensor12_packed`):
+- 32B payload: `configs/examples/tx_raw_32b.yaml`, `configs/examples/rx_raw_32b.yaml`
+- 16B payload: `configs/examples/tx_raw_16b.yaml`, `configs/examples/rx_raw_16b.yaml`
+- 8B payload: `configs/examples/tx_raw_8b.yaml`, `configs/examples/rx_raw_8b.yaml`
+
+For an initial "minimum spec" field setup (Air Speed preset 0 / 0.3 kbps), use:
+- 32B payload @ 0.3k: `configs/examples/tx_raw_32b_0p3k.yaml`, `configs/examples/rx_raw_32b_0p3k.yaml`
+- 16B payload @ 0.3k: `configs/examples/tx_raw_16b_0p3k.yaml`, `configs/examples/rx_raw_16b_0p3k.yaml`
+- 8B payload @ 0.3k: `configs/examples/tx_raw_8b_0p3k.yaml`, `configs/examples/rx_raw_8b_0p3k.yaml`
+
+Notes:
+- In the UART frame `LEN|SEQ|PAYLOAD`, total on-wire bytes is `payload_bytes + 2`.
+- These RAW baselines use `sensor12_packed_truncate` to isolate the payload-size effect and
+  quantify naive information loss vs BAM.
+
 1) Start RX (UART):
 ```bash
 python -m loralink_mllc.cli rx \
   --runspec <rx_runspec.yaml> \
   --manifest <artifacts.json> \
   --radio uart \
-  --uart-port COM4 \
+  --uart-port /dev/ttyAMA0 \
   --uart-baud 9600
 ```
 
@@ -38,7 +53,7 @@ python -m loralink_mllc.cli tx \
   --sensor-path out/sensor.jsonl \
   --dataset-out out/dataset_<run_id>.jsonl \
   --radio uart \
-  --uart-port COM3 \
+  --uart-port /dev/ttyAMA2 \
   --uart-baud 9600
 ```
 
@@ -69,6 +84,23 @@ python scripts/validate_run.py \
   --log out/runtime/<run_id>_rx.jsonl \
   --dataset out/dataset_<run_id>.jsonl \
   --out out/phase3/validate_<run_id>.json
+```
+
+3) KPI deltas vs baseline (PDR/ETX, and energy if Phase 4 is provided)
+If you have an aggregated Phase 3 report containing multiple `run_id` keys:
+```bash
+python scripts/kpi_check.py \
+  --phase3 out/phase3/report_all.json \
+  --baseline <baseline_run_id> \
+  --out out/phase3/kpi_<baseline_run_id>.json
+```
+If you also ran Phase 4 energy measurement:
+```bash
+python scripts/kpi_check.py \
+  --phase3 out/phase3/report_all.json \
+  --phase4 out/phase4/energy_report.json \
+  --baseline <baseline_run_id> \
+  --out out/phase3/kpi_with_energy_<baseline_run_id>.json
 ```
 
 3) Plotting (optional)

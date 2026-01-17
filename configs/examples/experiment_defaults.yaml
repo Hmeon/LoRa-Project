@@ -6,8 +6,8 @@ run_defaults:
     stride: 1
     sample_hz: 1.0
   tx:
-    guard_ms: 0
-    ack_timeout_ms: 10
+    guard_ms: 20
+    ack_timeout_ms: auto
     max_retries: 0
     max_inflight: 1
   codec:

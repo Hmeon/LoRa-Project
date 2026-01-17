@@ -12,7 +12,7 @@ profiles:
     crc_enabled: false
     header_mode: explicit
     preamble_symbols: 8
-    ldro: on
+    ldro: true
   - adr_code: "001"
     air_speed_preset: 1
     air_data_rate_kbps: 1.2
@@ -24,7 +24,7 @@ profiles:
     crc_enabled: false
     header_mode: explicit
     preamble_symbols: 8
-    ldro: on
+    ldro: false
   - adr_code: "010"
     air_speed_preset: 2
     air_data_rate_kbps: 2.4
@@ -36,7 +36,7 @@ profiles:
     crc_enabled: false
     header_mode: explicit
     preamble_symbols: 8
-    ldro: on
+    ldro: false
   - adr_code: "011"
     air_speed_preset: 3
     air_data_rate_kbps: 4.8
@@ -48,7 +48,7 @@ profiles:
     crc_enabled: null
     header_mode: null
     preamble_symbols: null
-    ldro: null
+    ldro: false
   - adr_code: "100"
     air_speed_preset: 4
     air_data_rate_kbps: 9.6
@@ -60,7 +60,7 @@ profiles:
     crc_enabled: null
     header_mode: null
     preamble_symbols: null
-    ldro: null
+    ldro: false
   - adr_code: "101"
     air_speed_preset: 5
     air_data_rate_kbps: 19.2
@@ -72,7 +72,7 @@ profiles:
     crc_enabled: null
     header_mode: null
     preamble_symbols: null
-    ldro: null
+    ldro: false
   - adr_code: "110"
     air_speed_preset: 6
     air_data_rate_kbps: 38.4
@@ -84,7 +84,7 @@ profiles:
     crc_enabled: null
     header_mode: null
     preamble_symbols: null
-    ldro: null
+    ldro: false
   - adr_code: "111"
     air_speed_preset: 7
     air_data_rate_kbps: 62.5
@@ -96,4 +96,4 @@ profiles:
     crc_enabled: null
     header_mode: null
     preamble_symbols: null
-    ldro: null
+    ldro: false

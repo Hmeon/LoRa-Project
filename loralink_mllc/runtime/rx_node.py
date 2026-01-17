@@ -27,6 +27,7 @@ class RxNode:
         self._clock = clock or RealClock()
         self._ack_seq = 0
         self._stop = False
+        self._rx_ok_count = 0
         self._truth_provider = truth_provider
         self._max_payload_bytes = runspec.max_payload_bytes
 
@@ -65,6 +66,7 @@ class RxNode:
             if rssi_dbm is not None:
                 rx_payload["rssi_dbm"] = rssi_dbm
         self._logger.log_event("rx_ok", rx_payload)
+        self._rx_ok_count += 1
         if self._runspec.mode == "LATENT":
             try:
                 recon = self._codec.decode(packet.payload)
@@ -90,8 +92,23 @@ class RxNode:
         self._logger.log_event("ack_sent", {"ack_seq": packet.seq})
         self._ack_seq = (self._ack_seq + 1) % 256
 
-    def run(self, step_ms: int = 5) -> None:
+    def run(
+        self,
+        step_ms: int = 5,
+        *,
+        max_rx_ok: int | None = None,
+        max_seconds: float | None = None,
+    ) -> None:
+        deadline_ms: int | None = None
+        if max_seconds is not None:
+            if max_seconds < 0:
+                raise ValueError("max_seconds must be >= 0")
+            deadline_ms = self._clock.now_ms() + int(max_seconds * 1000.0)
         while not self._stop:
+            if max_rx_ok is not None and self._rx_ok_count >= max_rx_ok:
+                break
+            if deadline_ms is not None and self._clock.now_ms() >= deadline_ms:
+                break
             self.process_once()
             self._clock.sleep_ms(step_ms)
 

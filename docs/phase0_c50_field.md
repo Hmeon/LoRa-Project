@@ -35,7 +35,7 @@ python -m loralink_mllc.cli rx \
   --runspec configs/examples/rx_raw.yaml \
   --manifest configs/examples/artifacts_sensor12_packed.json \
   --radio uart \
-  --uart-port COM4 \
+  --uart-port /dev/ttyAMA0 \
   --uart-baud 9600
 ```
 
@@ -46,7 +46,7 @@ python -m loralink_mllc.cli tx \
   --manifest configs/examples/artifacts_sensor12_packed.json \
   --sampler dummy \
   --radio uart \
-  --uart-port COM3 \
+  --uart-port /dev/ttyAMA2 \
   --uart-baud 9600
 ```
 

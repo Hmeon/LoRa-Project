@@ -13,6 +13,10 @@ class SensorSampler(Protocol):
         ...
 
 
+class NoSampleAvailable(Exception):
+    pass
+
+
 def _validate_order(order: Sequence[str], expected_dims: int | None) -> None:
     if expected_dims is not None and len(order) != expected_dims:
         raise ValueError(f"sensor order length {len(order)} does not match dims {expected_dims}")
@@ -24,11 +28,13 @@ class JsonlSensorSampler:
         path: str | Path,
         order: Sequence[str] | None = None,
         loop: bool = False,
+        follow: bool = False,
         expected_dims: int | None = None,
     ) -> None:
         self._path = Path(path)
         self._order = tuple(order or SENSOR_ORDER)
         self._loop = loop
+        self._follow = follow
         _validate_order(self._order, expected_dims)
         self._fh = self._path.open("r", encoding="utf-8")
 
@@ -37,6 +43,8 @@ class JsonlSensorSampler:
             line = self._fh.readline()
             if not line:
                 if not self._loop:
+                    if self._follow:
+                        raise NoSampleAvailable
                     raise StopIteration
                 self._fh.seek(0)
                 continue
@@ -61,11 +69,13 @@ class CsvSensorSampler:
         path: str | Path,
         order: Sequence[str] | None = None,
         loop: bool = False,
+        follow: bool = False,
         expected_dims: int | None = None,
     ) -> None:
         self._path = Path(path)
         self._order = tuple(order or SENSOR_ORDER)
         self._loop = loop
+        self._follow = follow
         _validate_order(self._order, expected_dims)
         self._fh = self._path.open("r", encoding="utf-8", newline="")
         self._reader = csv.DictReader(self._fh)
@@ -74,6 +84,8 @@ class CsvSensorSampler:
         row = next(self._reader, None)
         if row is None:
             if not self._loop:
+                if self._follow:
+                    raise NoSampleAvailable
                 raise StopIteration
             self._fh.seek(0)
             self._reader = csv.DictReader(self._fh)

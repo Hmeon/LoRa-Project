@@ -29,6 +29,15 @@ python scripts/phase4_energy_report.py \
   --out out/phase4/energy_report.json
 ```
 
+KPI deltas including energy (requires a Phase 3 aggregated report containing multiple `run_id` keys):
+```bash
+python scripts/kpi_check.py \
+  --phase3 out/phase3/report_all.json \
+  --phase4 out/phase4/energy_report.json \
+  --baseline <baseline_run_id> \
+  --out out/phase4/kpi_with_energy_<baseline_run_id>.json
+```
+
 Notes:
 - This script does not perform power sampling; it only computes derived values from
   your recorded `avg_power_w` and `duration_s`.

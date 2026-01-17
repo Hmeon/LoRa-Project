@@ -281,6 +281,71 @@ This is a step-by-step mission list to reach a complete field-ready release.
 - Direct hardware sensor drivers are not included; the runtime uses a dummy sampler by default.
   JSONL/CSV ingestion is available, but capture must be handled externally.
 
+## Pre-field readiness review (2026-01-17)
+This is an objective readiness assessment before the first real field test. It does **not** claim
+the KPI targets are achieved yet (that requires field data).
+
+### Objective quality gates (codebase)
+- `ruff check .`: PASS
+- `python -m pytest`: PASS (181 tests)
+- `python -m pytest --cov=loralink_mllc`: PASS (TOTAL 100% statement coverage)
+
+### Architecture completeness (qualitative)
+- **Data plane**: `TxNode` (sample/window -> codec -> packetize) -> `UartE22Radio` -> LoRa link ->
+  `RxNode` (parse -> log -> ACK).
+- **Control plane**: RunSpec YAML/JSON + artifacts manifests provide a stable contract between
+  runtime, datasets, and offline evaluation.
+- **Observability**: JSONL logs are consistent across TX/RX and support reproducible metrics
+  computation and post-run validation/packaging.
+
+### Runtime logic readiness (qualitative + risk)
+- **No AUX pin assumption** is handled by conservative pacing: ToA estimation + `guard_ms`, with
+  optional RSSI byte capture (`--uart-rssi-byte`) and robust ACK timeout behavior.
+- **Key remaining risk**: ToA accuracy depends on correct mapping of the hardware AT "Air Speed"
+  preset to (SF/BW/CR/LDRO). This must be confirmed and recorded per firmware version before KPI
+  claims.
+
+### Measurement readiness for KPI claims (objective)
+- **PDR/ETX** are computed from logs (`loralink_mllc.cli metrics`, `scripts/phase3_report.py`).
+- **Information preservation** (roundtrip MAE/MSE on delivered windows) is computed from
+  `dataset_raw.jsonl` + codec artifacts (`scripts/phase3_report.py`).
+- **Energy** is computed from manual power measurements merged with metrics
+  (`scripts/phase4_energy_report.py`).
+- **Baseline-relative KPI deltas** are computed with thresholds (PDR +30%, ETX -20%, energy -20%)
+  via `scripts/kpi_check.py`.
+
+### Recent pre-field patches added (field enablement)
+- SX1262 datasheet-aligned ToA estimation and `phy.ldro` support (auto/force).
+- `tx.ack_timeout_ms: auto` support with per-frame timeout estimation (data + ACK ToA + margin).
+- Live sensor tail mode (`--sensor-follow`) and RX stop controls (`--max-rx-ok`, `--max-seconds`).
+- Fixed-size payload baselines for 32/16/8-byte experiments:
+  `sensor12_packed_truncate` codec + example RunSpecs/manifests under `configs/examples/`.
+
+### Completion verdict (pre-field)
+- **Software pipeline**: ready for real field runs with two E22-900T22S/SX1262 nodes over UART.
+- **Scientific validation**: not complete until Phase 3/4 field data is collected and KPI deltas are
+  computed vs baseline.
+
+### Planned patches (if issues appear during field validation)
+**P0 (recommended before the first KPI run)**
+1) Freeze the AT Air Speed preset mapping for the target firmware; update and lock:
+   - `configs/examples/uart_record.yaml` (firmware + preset index)
+   - `configs/examples/phy_profiles.yaml` and `docs/phy_profiles_adr_code.md` (derived SF/BW/CR/LDRO)
+2) Improve multi-run aggregation ergonomics:
+   - Extend `scripts/phase3_report.py` to accept multiple `--dataset` paths (or add a concat helper),
+     so `report_all.json` can be generated from per-run dataset files without manual merging.
+3) Freeze the evaluation matrix for claims (baseline + variants) and record it in templates:
+   - baseline: RAW 32/16/8 (naive truncation) + at least one BAM latent size target
+   - variants: BAM packing/latent_dim grid for the same C50 condition
+
+**P1 (deployment hygiene)**
+4) Add GitHub Actions CI gate (ruff + pytest + coverage threshold) for release readiness.
+5) Replace placeholder docs: `LICENSE_TODO.md`, `CITATION.cff` TODO fields, and link final reports.
+
+**P2 (optional, hardware automation / future work)**
+6) Optional GPIO-assisted mode switching and config capture (M0/M1/RESET) to reduce manual steps.
+7) Implement SNR capture if the target AT firmware exposes it; otherwise document it as unavailable.
+
 ## Remaining steps (to reach 100% coverage)
 This section tracks **what is still missing** to fully match the updated final goal in
 `docs/01_design_doc_experiment_plan.md`. Field execution steps are listed earlier in this document

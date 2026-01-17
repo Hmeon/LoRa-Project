@@ -103,7 +103,7 @@ RunSpec 스키마는 `loralink_mllc/config/runspec.py`에 정의돼 있다. 환�
 | window.dims | 12 | 선택 | 센서 차원 수 | 12 |
 | window.W | 없음 | 필수 | 윈도우 길이 | 1 |
 | window.stride | 1 | 선택 | 윈도우 stride | 1 |
-| tx.ack_timeout_ms | 없음 | 필수 | ACK 타임아웃 | 10 |
+| tx.ack_timeout_ms | auto | 필수 | ACK 타임아웃(ms). `auto`/`null` 지원 | auto |
 | tx.max_retries | 없음 | 필수 | 최대 재시도 | 0 |
 | max_payload_bytes | 238 | 선택 | payload 상한 | 238 |
 | artifacts_manifest | 없음 | 선택 | artifacts manifest 경로 | configs/examples/artifacts_sensor12_packed.json |

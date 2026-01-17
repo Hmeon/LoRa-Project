@@ -29,11 +29,38 @@ adaptive tuning can be added later, but the current repo focuses on payload redu
 ## 1) Project Targets (KPI)
 The project is designed to enable field deployment by improving reliability and efficiency through payload reduction.
 
+### 1.1 Problem recognition
+- LoRa is strong for **low-power / long-range** links, but in real **LLN** environments (interference,
+  fading, obstacles), link quality can degrade sharply.
+- Under loss/interference, larger payloads increase airtime and exposure, often causing more
+  drops/retries and lower efficiency.
+
+### 1.2 Core solution hypothesis
+- **Reduce on-air payload bytes** → shorter airtime → fewer collisions / less exposure to interference →
+  **PDR improves** and **ETX decreases**.
+
+### 1.3 Core requirement (this project's focus)
+- Reduce payload size **while preserving information content** for sensor windows via compression.
+- The key approach is **ML-based lossy compression** (multi-layer BAM / FEBAM family) that aims to
+  outperform naive truncation or generic compressors in the LLN loss regime.
+
+### 1.4 Quantitative KPI targets
 - **PDR:** +30% or more (relative to baseline)
 - **ETX:** -20% or more (relative to baseline)
 - **Power:** -20% or more (relative to baseline)
 
 > NOTE: KPI computation method is defined in Section 9.
+
+### 1.5 Qualitative goals
+- Design and apply an ML-based lossy compression pipeline suitable for low-resource IoT nodes.
+- Demonstrate a communication structure that maintains high information preservation in
+  interference/loss environments.
+- Ensure practical applicability: field-run workflow, reproducible logs, lightweight runtime.
+
+### 1.6 Expected impact and applicability
+- Improve LoRa transmission efficiency and reliability under difficult RF conditions.
+- Enable applications such as smart-city sensing, industrial monitoring, agriculture, and other
+  low-resource environments where ML inference on the host is feasible.
 
 ---
 
@@ -187,7 +214,7 @@ Each profile entry MUST store:
 - `crc_enabled` (TBD; see 7.3)
 - `header_mode` (explicit/implicit, TBD)
 - `preamble_symbols` (TBD)
-- `ldro` (DE / low data rate optimization, TBD)
+- `ldro` (DE / low data rate optimization; record per profile, see SX1262 datasheet notes)
 
 Mapping notes:
 - Use Hz in machine configs (e.g., 125000) even if the table shows kHz.
@@ -202,7 +229,7 @@ Mapping notes:
 - crc_enabled: false
 - header_mode: explicit
 - preamble_symbols: 8
-- ldro: on
+- ldro: auto (enable when Tsym >= 16.38 ms; override in RunSpec `phy.ldro` if confirmed)
 
 No ToA estimates are considered valid unless these are pinned.
 
@@ -223,18 +250,14 @@ Global/fixed:
 ### 8.3 Output field
 - `toa_ms_est`: estimated ToA in ms (approximate; must be labeled as such)
 
-### 8.4 Canonical formula (aligned with typical LoRa calculators)
-- `Tsym = 2^SF / BW`
-- `Tpreamble = (Npreamble + 4.25) * Tsym`
-- `payloadSymbNb = 8 + max( ceil( (8*PL - 4*SF + 28 + 16*CRC - 20*IH) / (4*(SF - 2*DE)) ) * (CR + 4), 0 )`
-- `ToA = Tpreamble + payloadSymbNb * Tsym`
+### 8.4 SX1262 datasheet ToA equations
+See:
+- `docs/sx1262_must_know_notes.md` (Section 3)
+- `docs/toa_estimation.md`
 
-Where:
-- `PL = payload_bytes`
-- `CRC = 1` if enabled else `0`
-- `IH = 1` if implicit header else `0`
-- `DE = 1` if LDRO enabled else `0`
-- `CR` index: 4/5->1, 4/6->2, 4/7->3, 4/8->4
+Notes:
+- SX1262 defines separate symbol-count equations for SF5/SF6 vs SF7..SF12.
+- LDRO is recommended when `Tsym >= 16.38 ms` and impacts the denominator term in the symbol equation.
 
 ### 8.5 Practical scheduling guard time
 Because estimation is imperfect and UART/module buffering may add delay:
@@ -292,8 +315,8 @@ All logs are JSONL with one event per line.
 - `phy_id`
 
 ### 10.2 TX events
-- `tx_sent`: `seq`, `payload_bytes`, `toa_ms_est`, `guard_ms`, `attempt`
-  - optional: `frame_bytes`, `age_ms`, `codec_encode_ms`, `sensor_ts_ms`
+- `tx_sent`: `seq`, `payload_bytes`, `frame_bytes`, `toa_ms_est`, `guard_ms`, `ack_timeout_ms`, `attempt`
+  - optional: `window_id`, `age_ms`, `codec_encode_ms`, `sensor_ts_ms`
 - `ack_received`: `ack_seq`, `rtt_ms`
   - optional: `window_id`, `queue_ms`, `e2e_ms`, `codec_encode_ms`, `sensor_ts_ms`, `rssi_dbm`
 - `tx_failed`: `seq`, `reason`, `attempts`

@@ -35,4 +35,4 @@ Current field settings (ADR 000-010):
 - `crc_enabled`: false
 - `header_mode`: explicit
 - `preamble_symbols`: 8
-- `ldro`: on
+- `ldro`: auto (enable when `Tsym >= 16.38 ms`; record per profile if module firmware differs)

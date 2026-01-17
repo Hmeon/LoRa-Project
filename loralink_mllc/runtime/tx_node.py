@@ -11,8 +11,9 @@ from loralink_mllc.protocol.packet import Packet, PacketError
 from loralink_mllc.radio.base import IRadio, IRxRssi
 from loralink_mllc.runtime.logging import JsonlLogger
 from loralink_mllc.runtime.scheduler import Clock, RealClock, TxGate
-from loralink_mllc.runtime.toa import estimate_toa_ms
+from loralink_mllc.runtime.toa import estimate_ack_timeout_ms, estimate_toa_ms
 from loralink_mllc.sensing.dataset import DatasetLogger
+from loralink_mllc.sensing.sampler import NoSampleAvailable
 
 
 class Sampler(Protocol):
@@ -108,10 +109,15 @@ class TxNode:
         self._sampler = sampler
         self._dataset_logger = dataset_logger
         self._clock = clock or RealClock()
+        default_ack_timeout_ms = runspec.tx.ack_timeout_ms
+        if default_ack_timeout_ms is None:
+            default_ack_timeout_ms = estimate_ack_timeout_ms(
+                runspec.phy, data_frame_bytes=2 + runspec.max_payload_bytes
+            )
         self._gate = TxGate(
             clock=self._clock,
             guard_ms=runspec.tx.guard_ms,
-            ack_timeout_ms=runspec.tx.ack_timeout_ms,
+            ack_timeout_ms=default_ack_timeout_ms,
             max_retries=runspec.tx.max_retries,
             max_inflight=runspec.tx.max_inflight,
         )
@@ -156,6 +162,8 @@ class TxNode:
             else:
                 ts_ms = self._clock.now_ms()
                 sample = self._sampler.sample()
+        except NoSampleAvailable:
+            return
         except StopIteration:
             self._no_more_samples = True
             return
@@ -229,8 +237,15 @@ class TxNode:
                 continue
             if not self._gate.can_send():
                 continue
-            toa_ms = estimate_toa_ms(self._runspec.phy, len(inflight_payload.payload))
-            attempt = self._gate.record_send(seq, toa_ms)
+            frame_bytes = 2 + len(inflight_payload.payload)
+            toa_ms = estimate_toa_ms(self._runspec.phy, frame_bytes)
+            ack_timeout_ms = self._runspec.tx.ack_timeout_ms
+            if ack_timeout_ms is None:
+                ack_timeout_ms = estimate_ack_timeout_ms(
+                    self._runspec.phy,
+                    data_frame_bytes=frame_bytes,
+                )
+            attempt = self._gate.record_send(seq, toa_ms, ack_timeout_ms=ack_timeout_ms)
             packet = Packet(payload=inflight_payload.payload, seq=seq)
             self._radio.send(packet.to_bytes(max_payload_bytes=self._max_payload_bytes))
             now_ms = self._clock.now_ms()
@@ -240,9 +255,10 @@ class TxNode:
                     "window_id": inflight_payload.window_id,
                     "seq": seq,
                     "payload_bytes": len(inflight_payload.payload),
-                    "frame_bytes": 2 + len(inflight_payload.payload),
+                    "frame_bytes": frame_bytes,
                     "toa_ms_est": toa_ms,
                     "guard_ms": self._runspec.tx.guard_ms,
+                    "ack_timeout_ms": ack_timeout_ms,
                     "attempt": attempt,
                     "age_ms": now_ms - inflight_payload.built_ms,
                     "codec_encode_ms": inflight_payload.codec_encode_ms,
@@ -269,8 +285,15 @@ class TxNode:
         window = self._pending.popleft()
         seq = self._seq
         self._seq = (self._seq + 1) % 256
-        toa_ms = estimate_toa_ms(self._runspec.phy, len(window.payload))
-        attempt = self._gate.record_send(seq, toa_ms)
+        frame_bytes = 2 + len(window.payload)
+        toa_ms = estimate_toa_ms(self._runspec.phy, frame_bytes)
+        ack_timeout_ms = self._runspec.tx.ack_timeout_ms
+        if ack_timeout_ms is None:
+            ack_timeout_ms = estimate_ack_timeout_ms(
+                self._runspec.phy,
+                data_frame_bytes=frame_bytes,
+            )
+        attempt = self._gate.record_send(seq, toa_ms, ack_timeout_ms=ack_timeout_ms)
         packet = Packet(payload=window.payload, seq=seq)
         self._radio.send(packet.to_bytes(max_payload_bytes=self._max_payload_bytes))
         self._inflight_payloads[seq] = window
@@ -282,9 +305,10 @@ class TxNode:
                 "window_id": window.window_id,
                 "seq": seq,
                 "payload_bytes": len(window.payload),
-                "frame_bytes": 2 + len(window.payload),
+                "frame_bytes": frame_bytes,
                 "toa_ms_est": toa_ms,
                 "guard_ms": self._runspec.tx.guard_ms,
+                "ack_timeout_ms": ack_timeout_ms,
                 "attempt": attempt,
                 "age_ms": now_ms - window.built_ms,
                 "codec_encode_ms": window.codec_encode_ms,

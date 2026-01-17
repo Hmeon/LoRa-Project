@@ -44,6 +44,16 @@ Choose at least one and record the measurement method:
 - All metrics must reference the same `run_id` and `phy_id`.
 - Report both absolute values and relative deltas against baseline.
 
+Define deltas explicitly (baseline-relative percent):
+- `pdr_improve_pct = (pdr_variant - pdr_baseline) / pdr_baseline * 100`
+- `etx_reduce_pct = (etx_baseline - etx_variant) / etx_baseline * 100`
+- `energy_reduce_pct = (energy_baseline - energy_variant) / energy_baseline * 100`
+
+Default KPI targets:
+- PDR improve >= 30%
+- ETX reduce >= 20%
+- Energy reduce >= 20%
+
 ## Tooling note
 `python -m loralink_mllc.cli metrics` outputs summary stats when fields are present:
 - `ack_rtt_ms` from `ack_received.rtt_ms`

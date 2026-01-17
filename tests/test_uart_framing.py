@@ -1,3 +1,5 @@
+import pytest
+
 from loralink_mllc.radio.uart_framing import UartFrameParser
 
 
@@ -46,3 +48,20 @@ def test_uart_frame_parser_rssi_mode_consumes_trailing_byte() -> None:
     assert p1.rssi_dbm == -56
     assert p2.rssi_dbm == -76
 
+
+def test_uart_frame_parser_invalid_max_payload_raises() -> None:
+    with pytest.raises(ValueError, match="max_payload_bytes must be 1..255"):
+        UartFrameParser(max_payload_bytes=0)
+
+
+def test_uart_frame_parser_incomplete_buffer_and_buffered_bytes() -> None:
+    parser = UartFrameParser(max_payload_bytes=238, rssi_byte_enabled=False)
+    parser.feed(b"\x03")
+    assert parser.pop() is None
+    assert parser.buffered_bytes() == 1
+    parser.feed(b"\x07ab")
+    assert parser.pop() is None  # still missing 1 byte
+    parser.feed(b"c")
+    parsed = parser.pop()
+    assert parsed is not None
+    assert parsed.frame == bytes([3, 7]) + b"abc"

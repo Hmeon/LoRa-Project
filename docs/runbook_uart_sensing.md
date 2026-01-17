@@ -32,6 +32,10 @@ The runtime does not configure the module. Set these externally and record them:
 If these fields are not consistent across TX/RX, packets will fail silently.
 Document the final settings in your run notes.
 
+Recommended starting point for first field runs (minimum spec link budget):
+- Antenna gain: 10 dBi (record antenna type/orientation; verify regulatory EIRP limits).
+- Air data rate: 0.3 kbps (Air Speed preset 0, ADR-CODE "000" mapping in `configs/examples/phy_profiles.yaml`)
+
 Record template (example):
 ```yaml
 e22_config:
@@ -49,9 +53,18 @@ e22_config:
   module_payload_length_bytes: 7
 ```
 
+Example: set Air Speed to 0.3k and enable RSSI byte output (run on each node in config mode):
+```bash
+python scripts/e22_tool.py set --port /dev/ttyAMA2 --rate 9600 --save --air-speed 0.3k --tx-power-dbm 22
+python scripts/e22_tool.py set --port /dev/ttyAMA0 --rate 9600 --save --air-speed 0.3k --tx-power-dbm 22
+python scripts/e22_tool.py set --port /dev/ttyAMA2 --rate 9600 --save --rssi-byte true
+python scripts/e22_tool.py set --port /dev/ttyAMA0 --rate 9600 --save --rssi-byte true
+```
+
 ## 2.1 AUX-less timing assumption
 This repo assumes AUX is not available. TX pacing must use ToA estimation:
 - `tx_wait_ms = toa_ms_est + guard_ms`
+- Use a conservative ACK timeout to avoid premature retries; recommended setting is `tx.ack_timeout_ms: auto`.
 - ToA estimation details: `docs/toa_estimation.md`
 
 ## 2.2 Waveshare SX1262 LoRa HAT interface limits
@@ -152,6 +165,7 @@ python -m loralink_mllc.cli tx \
   --manifest configs/examples/artifacts_sensor12_packed.json \
   --sampler jsonl \
   --sensor-path out/sensor.jsonl \
+  --sensor-follow \
   --dataset-out out/dataset_raw.jsonl \
   --radio uart \
   --uart-port COM3 \

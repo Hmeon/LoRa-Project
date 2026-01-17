@@ -35,6 +35,7 @@ def _run_tx(args: argparse.Namespace) -> int:
     verify_manifest(runspec, manifest, codec)
     clock = RealClock()
 
+    sampler = DummySampler(runspec.window.dims)
     if args.sampler == "jsonl":
         if not args.sensor_path:
             raise ValueError("--sensor-path is required for jsonl sampler")
@@ -42,6 +43,7 @@ def _run_tx(args: argparse.Namespace) -> int:
             args.sensor_path,
             order=SENSOR_ORDER,
             loop=args.sensor_loop,
+            follow=args.sensor_follow,
             expected_dims=runspec.window.dims,
         )
     elif args.sampler == "csv":
@@ -51,11 +53,11 @@ def _run_tx(args: argparse.Namespace) -> int:
             args.sensor_path,
             order=SENSOR_ORDER,
             loop=args.sensor_loop,
+            follow=args.sensor_follow,
             expected_dims=runspec.window.dims,
         )
-    else:
-        sampler = DummySampler(runspec.window.dims)
 
+    radio = None
     if args.radio == "mock":
         link = create_mock_link(loss_rate=args.mock_loss_rate, latency_ms=args.mock_latency_ms)
         radio = link.a
@@ -83,11 +85,17 @@ def _run_tx(args: argparse.Namespace) -> int:
             args.dataset_out, runspec.run_id, SENSOR_ORDER, units=SENSOR_UNITS
         )
     logger.log_run_start(runspec, manifest)
-    node = TxNode(runspec, radio, codec, logger, sampler, dataset_logger, clock=clock)
-    node.run(step_ms=args.step_ms)
-    if dataset_logger:
-        dataset_logger.close()
-    logger.close()
+    try:
+        node = TxNode(runspec, radio, codec, logger, sampler, dataset_logger, clock=clock)
+        node.run(step_ms=args.step_ms)
+    except KeyboardInterrupt:
+        return 0
+    finally:
+        if dataset_logger:
+            dataset_logger.close()
+        logger.close()
+        if radio is not None:
+            radio.close()
     return 0
 
 
@@ -98,6 +106,7 @@ def _run_rx(args: argparse.Namespace) -> int:
     verify_manifest(runspec, manifest, codec)
     clock = RealClock()
 
+    radio = None
     if args.radio == "mock":
         link = create_mock_link(loss_rate=args.mock_loss_rate, latency_ms=args.mock_latency_ms)
         radio = link.b
@@ -120,9 +129,17 @@ def _run_rx(args: argparse.Namespace) -> int:
         clock=clock,
     )
     logger.log_run_start(runspec, manifest)
-    node = RxNode(runspec, radio, codec, logger, clock=clock)
-    node.run(step_ms=args.step_ms)
-    logger.close()
+    max_rx_ok = int(args.max_rx_ok) if int(args.max_rx_ok) > 0 else None
+    max_seconds = float(args.max_seconds) if float(args.max_seconds) > 0 else None
+    try:
+        node = RxNode(runspec, radio, codec, logger, clock=clock)
+        node.run(step_ms=args.step_ms, max_rx_ok=max_rx_ok, max_seconds=max_seconds)
+    except KeyboardInterrupt:
+        return 0
+    finally:
+        logger.close()
+        if radio is not None:
+            radio.close()
     return 0
 
 
@@ -173,6 +190,11 @@ def main(argv: list[str] | None = None) -> int:
     tx.add_argument("--sampler", choices=["dummy", "jsonl", "csv"], default="dummy")
     tx.add_argument("--sensor-path")
     tx.add_argument("--sensor-loop", action="store_true")
+    tx.add_argument(
+        "--sensor-follow",
+        action="store_true",
+        help="tail sensor file until max_windows",
+    )
     tx.add_argument("--dataset-out")
     tx.add_argument("--step-ms", type=int, default=5)
     tx.set_defaults(func=_run_tx)
@@ -191,6 +213,18 @@ def main(argv: list[str] | None = None) -> int:
     rx.add_argument("--mock-loss-rate", type=float, default=0.0)
     rx.add_argument("--mock-latency-ms", type=int, default=0)
     rx.add_argument("--step-ms", type=int, default=5)
+    rx.add_argument(
+        "--max-rx-ok",
+        type=int,
+        default=0,
+        help="stop after N rx_ok events (0=no limit)",
+    )
+    rx.add_argument(
+        "--max-seconds",
+        type=float,
+        default=0.0,
+        help="stop after N seconds (0=no limit)",
+    )
     rx.set_defaults(func=_run_rx)
 
     phase0 = sub.add_parser("phase0", help="run Phase 0 sweep for C50")

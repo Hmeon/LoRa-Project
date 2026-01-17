@@ -4,6 +4,8 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+.coverage
+htmlcov/
 
 .idea/
 .vscode/
@@ -18,4 +20,3 @@ models/
 
 # Reference repo folder (kept local only)
 ChirpChirp-main/
-

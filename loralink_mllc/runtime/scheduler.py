@@ -39,6 +39,7 @@ class Inflight:
     last_tx_ms: int
     attempts: int
     toa_ms_est: float
+    ack_timeout_ms: int
 
 
 class TxGate:
@@ -52,7 +53,7 @@ class TxGate:
     ) -> None:
         self._clock = clock
         self._guard_ms = guard_ms
-        self._ack_timeout_ms = ack_timeout_ms
+        self._ack_timeout_ms_default = ack_timeout_ms
         self._max_retries = max_retries
         self._max_inflight = max_inflight
         self._last_tx_start_ms: int | None = None
@@ -71,13 +72,18 @@ class TxGate:
         now = self._clock.now_ms()
         return now >= int(self._last_tx_start_ms + self._last_toa_ms + self._guard_ms)
 
-    def record_send(self, seq: int, toa_ms_est: float) -> int:
+    def record_send(self, seq: int, toa_ms_est: float, ack_timeout_ms: int | None = None) -> int:
         now = self._clock.now_ms()
+        timeout_raw = ack_timeout_ms if ack_timeout_ms is not None else self._ack_timeout_ms_default
+        timeout_ms = int(timeout_raw)
+        if timeout_ms <= 0:
+            raise ValueError("ack_timeout_ms must be > 0")
         if seq in self._inflight:
             inflight = self._inflight[seq]
             inflight.last_tx_ms = now
             inflight.attempts += 1
             inflight.toa_ms_est = toa_ms_est
+            inflight.ack_timeout_ms = timeout_ms
             self.retries_total += 1
             attempt = inflight.attempts
         else:
@@ -87,6 +93,7 @@ class TxGate:
                 last_tx_ms=now,
                 attempts=1,
                 toa_ms_est=toa_ms_est,
+                ack_timeout_ms=timeout_ms,
             )
             attempt = 1
         self.sent_count += 1
@@ -107,7 +114,7 @@ class TxGate:
         for seq, inflight in list(self._inflight.items()):
             if inflight.attempts > self._max_retries:
                 continue
-            if now - inflight.last_tx_ms >= self._ack_timeout_ms:
+            if now - inflight.last_tx_ms >= inflight.ack_timeout_ms:
                 yield seq
 
     def expired_failures(self) -> Iterable[Inflight]:
@@ -115,7 +122,7 @@ class TxGate:
         for seq, inflight in list(self._inflight.items()):
             if inflight.attempts <= self._max_retries:
                 continue
-            if now - inflight.last_tx_ms >= self._ack_timeout_ms:
+            if now - inflight.last_tx_ms >= inflight.ack_timeout_ms:
                 yield self._inflight.pop(seq)
 
     def metrics(self) -> dict:
