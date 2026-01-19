@@ -13,9 +13,9 @@ error with a reproducible field-ready pipeline.
 adaptive tuning can be added later, but the current repo focuses on payload reduction + validation.
 
 **TODO (implementation gaps):**
-- Define latency metrics (ACK RTT vs E2E) and measurement workflow.
+- Define **cross-device** end-to-end latency (TX -> RX application) and its measurement workflow. (Local ACK RTT/queue/e2e are already logged.)
 - RSSI byte capture is implemented via REG3 bit 7; decide whether SNR is available/capturable on your AT firmware.
-- Confirm Air Speed preset to PHY mapping with vendor documentation; current mapping uses ADR-CODE table.
+- Confirm Air Speed preset to PHY mapping with vendor documentation and lock it per firmware version (see `docs/phy_profiles_adr_code.md`, `configs/examples/phy_profiles.yaml`).
 
 **Key constraints to respect (non-negotiable):**
 1. **UART-based** control/data path between Raspberry Pi and E22-900T22S.
@@ -107,7 +107,7 @@ The LoRa module is controlled/used via UART.
 - Air Speed presets 0..7 are fixed PHY bundles inside the AT firmware.
   Record the preset index (and firmware version) in the UART record.
 - Because SF/BW/CR cannot be set directly on this hardware, any PHY values used for ToA
-  must be derived from the vendor's Air Speed table. If the mapping is unknown, mark it as TODO.
+  must be derived from the vendor's Air Speed table. This repo includes a reverse-calculated ADR-CODE mapping, but it must be confirmed per firmware version.
 
 ---
 
@@ -211,9 +211,9 @@ Each profile entry MUST store:
 - `sf`, `bw_hz`, `cr` (e.g., "4/5")
 - `tsym_ms` (from table)
 - `real_datarate_bps` (from table)
-- `crc_enabled` (TBD; see 7.3)
-- `header_mode` (explicit/implicit, TBD)
-- `preamble_symbols` (TBD)
+- `crc_enabled` (see 7.3; pinned for current field runs)
+- `header_mode` (explicit/implicit; see 7.3)
+- `preamble_symbols` (see 7.3)
 - `ldro` (DE / low data rate optimization; record per profile, see SX1262 datasheet notes)
 
 Mapping notes:
@@ -299,7 +299,7 @@ Additionally compute per sensor group (minimum):
 - GPS(3), Acc(3), Gyro(3), RPY(3)
 
 Aggregation rule must be pinned:
-- `TBD: aggregate method` (e.g., average over dims, average over windows)
+- Default (repo tooling): element-wise mean over `dims * W` per window; aggregate by averaging over windows (equivalently, sum over all elements / total count).
 
 ---
 
@@ -321,14 +321,13 @@ All logs are JSONL with one event per line.
   - optional: `window_id`, `queue_ms`, `e2e_ms`, `codec_encode_ms`, `sensor_ts_ms`, `rssi_dbm`
 - `tx_failed`: `seq`, `reason`, `attempts`
 Optional: `window_id`, `adr_code`, `uart_write_len`, `tx_power_dbm`, `channel`, `address`.
-Note: the runtime logs `window_id` on TX events when `--dataset-out` is used so post-run
-analysis can join delivered windows to `dataset_raw.jsonl`.
+Note: the runtime logs `window_id` on TX events; `--dataset-out` additionally writes `dataset_raw.jsonl` so post-run analysis can join delivered windows.
 
 ### 10.3 RX events
 - `rx_ok`: `seq`, `payload_bytes` (optional: `frame_bytes`, `rssi_dbm`)
 - `rx_parse_fail`: `reason`
 - `ack_sent`: `ack_seq`
-Optional (TBD): `window_id`, `adr_code`, `crc_ok`, `rssi_dbm`, `snr`.
+Optional: `window_id`, `adr_code`, `crc_ok`, `rssi_dbm` (if RSSI byte output is enabled), `snr` (TBD).
 Note: `rssi_dbm` can be logged when the module appends an RSSI byte (REG3 bit 7) and the runtime is run with `--uart-rssi-byte`.
 
 ### 10.4 Reconstruction events (LATENT)

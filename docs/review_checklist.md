@@ -36,7 +36,7 @@ repo is the completion/deployment target for `ChirpChirp-main/`.
 
 ## 7) Packaging and release
 - [ ] Define deployment target and release process (package/image/binary).
-- [ ] Confirm licensing, security, and contribution docs (Contributing/Security added; license TBD).
+- [x] Confirm licensing, security, and contribution docs (License/Contributing/Security/CoC/Support present).
 
 ## 8) Repo hygiene
 - [x] Review `ChirpChirp-main/` usage: keep as reference, archive, or extract.

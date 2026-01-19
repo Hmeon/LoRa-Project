@@ -40,7 +40,7 @@ class UartE22Radio(IRadio):
             baudrate=baudrate,
             timeout=0,
             write_timeout=max(0.0, timeout_ms / 1000.0),
-            )
+        )
         self._max_payload_bytes = int(max_payload_bytes)
         self._parser = UartFrameParser(
             max_payload_bytes=self._max_payload_bytes,

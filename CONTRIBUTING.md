@@ -3,7 +3,7 @@
 Thanks for helping improve LoRaLink-MLLC.
 
 ## Development setup
-- Python: 3.11+
+- Python: 3.10+
 - Install (editable + dev tools): `python -m pip install -e .[dev]`
 - Optional extras:
   - UART: `python -m pip install -e .[uart]`
@@ -21,4 +21,3 @@ Thanks for helping improve LoRaLink-MLLC.
 ## Repo hygiene / security
 - Do not commit real device addresses, credentials, or private datasets.
 - Generated outputs belong under `out/` (ignored by git).
-

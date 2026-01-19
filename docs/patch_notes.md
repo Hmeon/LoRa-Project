@@ -340,7 +340,7 @@ the KPI targets are achieved yet (that requires field data).
 
 **P1 (deployment hygiene)**
 4) Add GitHub Actions CI gate (ruff + pytest + coverage threshold) for release readiness.
-5) Replace placeholder docs: `LICENSE_TODO.md`, `CITATION.cff` TODO fields, and link final reports.
+5) Finish release metadata: fill `CITATION.cff` TODO fields, link final reports, and pin release process.
 
 **P2 (optional, hardware automation / future work)**
 6) Optional GPIO-assisted mode switching and config capture (M0/M1/RESET) to reduce manual steps.
@@ -371,7 +371,7 @@ This section tracks **what is still missing** to fully match the updated final g
 ### D) Docs + release hygiene
 - [ ] Run Phase 3/4 on hardware and populate records (`configs/examples/phase3_record.yaml`, `configs/examples/phase4_record.yaml`) and plots under `docs/assets/`.
 - [ ] Fill `README.ko.md` results section and link final reports/plots from README(s).
-- [ ] Replace repository placeholders: `LICENSE_TODO.md`, `CITATION.cff` TODO fields, and optional Contributing/Security docs.
+- [ ] Replace repository placeholders: `CITATION.cff` TODO fields, and publish final reports/plots.
 
 ## File inventory highlights
 - Runtime: `loralink_mllc/runtime/tx_node.py`, `loralink_mllc/runtime/rx_node.py`

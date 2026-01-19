@@ -5,14 +5,15 @@
 
   <p>
     <img src="https://img.shields.io/badge/status-scaffold-informational" alt="status" />
-    <img src="https://img.shields.io/badge/python-%3E%3D3.11-blue" alt="python" />
+    <img src="https://img.shields.io/badge/python-%3E%3D3.10-blue" alt="python" />
+    <img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="license" />
     <img src="https://img.shields.io/badge/platform-Raspberry%20Pi-blue" alt="platform" />
     <img src="https://img.shields.io/badge/radio-SX1262%20(E22--900T22S)-informational" alt="radio" />
     <img src="https://img.shields.io/badge/link-UART-yellow" alt="link" />
     <img src="https://img.shields.io/badge/docs-available-brightgreen" alt="docs" />
   </p>
 
-  <p><a href="README.md">README in English</a></p>
+  <p><a href="README.md">README</a></p>
 </div>
 
 ## TL;DR
@@ -89,10 +90,11 @@ flowchart LR
 - `configs/examples/`에는 YAML RunSpec 템플릿과 JSON legacy 템플릿이 포함된다.
 - `docs/`에는 설계 문서, 프로토콜/PHY 참고 문서, 논문 해부 문서가 포함된다.
 - `loralink_mllc/`는 런타임 패키지이며 코덱, 프로토콜, 라디오, 실험 코드가 있다.
-- `scripts/`와 `src/`는 현재 빈 플레이스홀더다.
+- `scripts/`에는 Phase 2/3/4 보조 도구(학습/평가/리포트/플롯/검증/패키징)와 E22 설정 도구가 있다.
+- `src/`는 로컬 editable install 과정에서 생성되는 메타데이터(예: `*.egg-info`)가 들어갈 수 있으며 gitignore 대상이다.
 
 ## Quickstart (First Success)
-사전 조건: Python 3.11. repo root에서 실행.
+사전 조건: Python 3.10+. repo root에서 실행.
 
 이 quickstart는 mock 링크로 패킷화, 로깅, metrics를 검증한다. 하드웨어가 필요 없다.
 
@@ -208,7 +210,7 @@ python -m loralink_mllc.cli rx --runspec configs/examples/rx_bam.yaml --manifest
   - `docs/papers/05_paper_dissect__mf-bam.md`
 
 ## Experiment plan summary
-- Phase 0: adr_code와 payload_bytes 고정, C50 (PDR 약 50 percent) 조건 탐색.
+- Phase 0: adr_code와 payload_bytes 고정, C50 (PDR 약 50%) 조건 탐색.
 - Phase 1: C50 조건에서 RAW와 LATENT를 동일 조건으로 수집.
 - Phase 2: BAM-family encoder/decoder를 오프라인에서 학습하고 아티팩트를 버전 관리.
 - Phase 3: payload_bytes 변화에 따른 on-air PDR/ETX와 재구성 오차 평가.
@@ -220,7 +222,7 @@ python -m loralink_mllc.cli rx --runspec configs/examples/rx_bam.yaml --manifest
 - 링크 지표: PDR (Packet Delivery Ratio), ETX (Expected Transmission Count)
 - 에너지 지표: 평균 전력 또는 성공 전달당 에너지 (측정 방법 기록)
 - 재구성 지표: MAE/MSE
-- 목표 KPI (baseline 대비): PDR +30 percent 이상, ETX -20 percent 이상, Power -20 percent 이상
+- 목표 KPI (baseline 대비): PDR +30% 이상, ETX -20% 이상, 전력 -20% 이상
 
 정의와 계산은 `docs/metrics_definition.md` 참고.
 
@@ -237,10 +239,10 @@ python -m loralink_mllc.cli rx --runspec configs/examples/rx_bam.yaml --manifest
 - [x] BAM-family 추론 코덱과 아티팩트 규약 추가
 - [x] Phase 2 학습 워크플로 및 평가 스크립트 제공 (`scripts/phase2_train_bam.py`, `scripts/eval_bam_dataset.py`)
 - [ ] on-air 검증 결과 공개
-- [ ] 라이선스 선택 및 추가
+- [x] Apache-2.0 라이선스 적용
 
 ## License
-라이선스가 아직 결정되지 않았다. `LICENSE_TODO.md` 참고.
+Apache License 2.0. `LICENSE` 참고.
 
 ## Citation
 `CITATION.cff`에 최소 템플릿이 있다. 배포 전 TODO 필드를 채운다.
