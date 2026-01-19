@@ -4,7 +4,7 @@ title: "LoRaLink-MLLC"
 type: software
 version: "0.1.0"
 authors:
-  - given-names: "TODO"
-    family-names: "TODO"
-repository-code: "TODO"
-url: "TODO"
+  - name: "Hmeon"
+repository-code: "https://github.com/Hmeon/LoRa-Project"
+url: "https://github.com/Hmeon/LoRa-Project"
+license: "Apache-2.0"

@@ -73,25 +73,25 @@ LoRaLink-MLLC는 **E22-900T22S(SX1262) AT UART P2P** 환경에서 **페이로드
 ## Architecture
 ```mermaid
 flowchart LR
-  subgraph TX[TX node]
-    Sensor[Sensor window] --> Encode["Codec: RAW / Truncate / Zlib / BAM"]
-    Encode --> Packetize["Packetize LEN│SEQ│PAYLOAD"]
-    Packetize --> UART_TX["UART → E22"]
-    UART_TX --> LogTX["JSONL log (+ optional dataset_raw.jsonl)"]
+  subgraph TX["TX node"]
+    Sensor["Sensor window"] --> Encode["Codec: RAW / Truncate / Zlib / BAM"]
+    Encode --> Packetize["Packetize LEN/SEQ/PAYLOAD"]
+    Packetize --> UART_TX["UART to E22"]
+    UART_TX --> LogTX["JSONL log; optional dataset_raw.jsonl"]
   end
 
-  UART_TX --> Air[LoRa air link]
+  UART_TX --> Air["LoRa air link"]
 
-  subgraph RX[RX node]
-    Air --> UART_RX["UART ← E22"]
-    UART_RX --> Parse[Parse frame]
-    Parse --> Decode[Decode / reconstruct (LATENT)]
-    Decode --> LogRX[JSONL log]
+  subgraph RX["RX node"]
+    Air --> UART_RX["UART from E22"]
+    UART_RX --> Parse["Parse frame"]
+    Parse --> Decode["Decode / reconstruct LATENT"]
+    Decode --> LogRX["JSONL log"]
   end
 
-  subgraph Offline[Offline training loop (Phase 2)]
-    Data[dataset_raw.jsonl] --> Train[Train BAM-family model]
-    Train --> Artifacts[Artifacts: layer_*.npz + norm.json + bam_manifest.json]
+  subgraph Offline["Offline training loop - Phase 2"]
+    Data["dataset_raw.jsonl"] --> Train["Train BAM-family model"]
+    Train --> Artifacts["Artifacts: layer_*.npz + norm.json + bam_manifest.json"]
   end
 
   Artifacts -.-> Encode
@@ -237,7 +237,7 @@ Field completion (Phase 0~4) 기준으로 남은 핵심 항목:
 - **Air Speed preset ↔ PHY 매핑 확정**(타겟 펌웨어 버전 고정) + `configs/examples/uart_record.yaml`에 기록
 - **실험 상수 고정**: `guard_ms`, `window.W/stride/sample_hz`, ACK 정책(채널 포함), 측정 장비/방법
 - **Phase 3/4 실측 실행** → `report_all.json`/플롯 생성 → KPI 산출 및 README/README.ko.md 결과 섹션 업데이트
-- **Release hygiene**: `CITATION.cff` TODO 채우기, 릴리즈 태그/CHANGELOG 관리
+- **Release hygiene**: 릴리즈 태그/CHANGELOG 관리 + CITATION/메타데이터 유지
 
 ## Troubleshooting
 - `requires-python` 오류: Python 3.10+ 환경인지 확인 후 재설치
