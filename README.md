@@ -74,16 +74,16 @@ LoRaLink-MLLC는 **E22-900T22S(SX1262) AT UART P2P** 환경에서 **페이로드
 ```mermaid
 flowchart LR
   subgraph TX[TX node]
-    Sensor[Sensor window] --> Encode[Codec: RAW | Truncate | Zlib | BAM]
-    Encode --> Packetize[Packetize LEN|SEQ|PAYLOAD]
-    Packetize --> UART_TX[UART -> E22]
-    UART_TX --> LogTX[JSONL log + (optional) dataset_raw.jsonl]
+    Sensor[Sensor window] --> Encode["Codec: RAW / Truncate / Zlib / BAM"]
+    Encode --> Packetize["Packetize LEN│SEQ│PAYLOAD"]
+    Packetize --> UART_TX["UART → E22"]
+    UART_TX --> LogTX["JSONL log (+ optional dataset_raw.jsonl)"]
   end
 
   UART_TX --> Air[LoRa air link]
 
   subgraph RX[RX node]
-    Air --> UART_RX[UART <- E22]
+    Air --> UART_RX["UART ← E22"]
     UART_RX --> Parse[Parse frame]
     Parse --> Decode[Decode / reconstruct (LATENT)]
     Decode --> LogRX[JSONL log]
