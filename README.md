@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="docs/assets/logo_placeholder.png" alt="LoRaLink-MLLC logo" width="250" />
+  <img src="docs/assets/logo_placeholder.png" alt="LoRaLink-MLLC logo" width="200"/>
   <h1>LoRaLink-MLLC</h1>
   <p><strong>LoRa UART(P2P) 링크에서 ML 기반 손실 압축으로 페이로드(payload)를 줄이고, 링크/정보 보존 지표를 현장에서 검증하는 실험 런타임.</strong></p>
 
